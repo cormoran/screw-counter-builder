@@ -28,6 +28,7 @@ python design_screw_counter.py --columns 2 --detent-spring-width 1.0 --out light
 ## ファイル
 
 - [詳細な設定・印刷・組立説明](README_ja.md)
+- [Web版の実現可能性と実装方針](docs/web-feasibility.md)
 - `design_screw_counter.py`：パラメータ設定、CAD生成、幾何学的な検証
 - `generated/`：標準M2・4×10の組立STEPと印刷用STL
 - `test/`：4×2の印刷試験版（ソフトウェアのテストスイートではありません）
