@@ -5,10 +5,32 @@ import type { DerivedDimensions, ModelPart, TriangleMesh } from '../cad'
 import { DimensionPreview } from './DimensionPreview'
 
 export type ViewMode = 'assembled' | 'exploded' | '2d'
+export type ViewerCameraState = {
+  position: [number, number, number]
+  target: [number, number, number]
+  zoom: number
+  sceneSize: number
+}
+const CAMERA_KEY = 'screw-counter-assembly-camera-v1'
+
+function loadCamera(): ViewerCameraState | null {
+  try {
+    const value: unknown = JSON.parse(window.sessionStorage.getItem(CAMERA_KEY) ?? 'null')
+    if (!value || typeof value !== 'object') return null
+    const candidate = value as ViewerCameraState
+    const numbers = [...candidate.position, ...candidate.target, candidate.zoom, candidate.sceneSize]
+    return candidate.position.length === 3 && candidate.target.length === 3 && numbers.every(Number.isFinite) && candidate.zoom > 0 && candidate.sceneSize > 0 ? candidate : null
+  } catch { return null }
+}
+
+function storeCamera(camera: ViewerCameraState): void {
+  try { window.sessionStorage.setItem(CAMERA_KEY, JSON.stringify(camera)) } catch { /* Storage is optional. */ }
+}
 type Props = {
   meshes: Partial<Record<ModelPart, TriangleMesh>>
   dimensions?: DerivedDimensions | null
   mode: ViewMode
+  cameraState: { current: ViewerCameraState | null }
   printPlateSize?: { width: number; depth: number }
 }
 
@@ -19,7 +41,7 @@ const PARTS: readonly { id: ModelPart; label: string; color: number; offset: [nu
   { id: 'lid', label: 'ふた', color: 0x3b82f6, offset: [0, 0, 19] },
 ]
 
-export function ModelViewer({ meshes, dimensions = null, mode, printPlateSize }: Props) {
+export function ModelViewer({ meshes, dimensions = null, mode, cameraState, printPlateSize }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const [separation, setSeparation] = useState(100)
   const [visibleParts, setVisibleParts] = useState<Partial<Record<ModelPart, boolean>>>({})
@@ -93,10 +115,30 @@ export function ModelViewer({ meshes, dimensions = null, mode, printPlateSize }:
     group.position.copy(center).multiplyScalar(-1)
     scene.add(group)
     const size = bounds.getSize(new THREE.Vector3()).length() || 80
-    if (printPlateSize) camera.position.set(size * 0.42, -size * 0.52, size * 0.9)
-    else camera.position.set(size * 0.7, -size * 0.85, size * 0.65)
-    controls.target.set(0, 0, 0)
+    if (!printPlateSize && !cameraState.current) cameraState.current = loadCamera()
+    const prior = cameraState.current
+    if (prior && prior.sceneSize > 0) {
+      const scale = size / prior.sceneSize
+      camera.position.fromArray(prior.position).multiplyScalar(scale)
+      controls.target.fromArray(prior.target).multiplyScalar(scale)
+      camera.zoom = prior.zoom
+      camera.updateProjectionMatrix()
+    } else {
+      if (printPlateSize) camera.position.set(size * 0.42, -size * 0.52, size * 0.9)
+      else camera.position.set(size * 0.7, -size * 0.85, size * 0.65)
+      controls.target.set(0, 0, 0)
+    }
     controls.update()
+    const saveCamera = () => {
+      cameraState.current = {
+        position: camera.position.toArray() as [number, number, number],
+        target: controls.target.toArray() as [number, number, number],
+        zoom: camera.zoom,
+        sceneSize: size,
+      }
+      if (!printPlateSize) storeCamera(cameraState.current)
+    }
+    controls.addEventListener('end', saveCamera)
 
     const resize = () => {
       const { width, height } = container.getBoundingClientRect()
@@ -143,6 +185,7 @@ export function ModelViewer({ meshes, dimensions = null, mode, printPlateSize }:
     }
     render()
     return () => {
+      saveCamera()
       cancelAnimationFrame(frame)
       observer.disconnect()
       if (!printPlateSize) {
@@ -155,7 +198,7 @@ export function ModelViewer({ meshes, dimensions = null, mode, printPlateSize }:
       renderer.dispose()
       renderer.domElement.remove()
     }
-  }, [meshes, printPlateSize, show3d])
+  }, [meshes, printPlateSize?.width, printPlateSize?.depth, show3d, cameraState])
 
   return <div className="model-viewer">
     {!printPlateSize && mode !== '2d' && <label className="separation-control">
