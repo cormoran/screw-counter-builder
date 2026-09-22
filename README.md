@@ -16,6 +16,18 @@ python -m pip install -r requirements.txt
 python design_screw_counter.py --rows 4 --columns 10 --screw M2 --out generated
 ```
 
+## Web版（ブラウザ内生成）
+
+`web/` にブラウザだけで動く生成画面を用意しています。設定を入力してモデルを生成すると、4部品の印刷用STL、組立STEP、寸法・検証JSONを個別またはZIPでダウンロードできます。生成処理は端末内のWeb Workerで実行され、モデルはサーバーへ送信されません。
+
+```sh
+cd web
+npm ci
+npm run dev
+```
+
+表示されるローカルURLを開いてください。検証には `npm test`、配布用ビルドには `npm run build` を使用します。プリセットのねじ頭径は設計上の想定です。実物のねじを測り、試験版で摺動・保持・落下を確認してください。
+
 `rows`は1回に排出する本数、`columns`は列数です。M1.5／M2／M3に対応しています。
 
 ```sh

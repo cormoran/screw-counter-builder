@@ -7,3 +7,5 @@ venv/
 light_test/
 firm_test/
 no_detent/
+web/node_modules/
+web/dist/
