@@ -50,6 +50,7 @@ export const SETTINGS_FIELDS: readonly Field[] = [
   { key: 'joint', category: 'operation', label: '本体の接合方法', description: 'ねじ留めは四隅に M2×5 を4本使います。', kind: 'select', options: [{ value: 'screws', label: 'ねじ留め' }, { value: 'glue', label: '接着' }] },
   { key: 'detent', category: 'operation', label: 'クリック感を付ける', description: '各停止位置でスライダーを保持します。', kind: 'boolean' },
   { key: 'detentSpringWidth', category: 'operation', label: 'ばね幅', description: 'クリック用の板ばねの幅です。', kind: 'number', unit: 'mm', min: 1, max: 1.5, step: 0.05 },
+  { key: 'detentSpringLength', category: 'operation', label: 'ばね長さ', description: '短くするとクリック用の板ばねが硬くなります。', kind: 'number', unit: 'mm', min: 12, max: 18, step: 0.5 },
   { key: 'headDiameter', category: 'screw-dimensions', label: 'ねじ頭径', description: '選んだねじの初期値です。実測値で上書きできます。', kind: 'number', unit: 'mm', min: 0.1, max: 20, step: 0.05, optional: true },
   { key: 'shaftDiameter', category: 'screw-dimensions', label: 'ねじ軸径', description: '選んだねじの初期値です。実測値で上書きできます。', kind: 'number', unit: 'mm', min: 0.1, max: 20, step: 0.05, optional: true },
   { key: 'slotWidth', category: 'screw-dimensions', label: 'スロット幅', description: '選んだねじの初期値です。実測値で上書きできます。', kind: 'number', unit: 'mm', min: 0.1, max: 20, step: 0.05, optional: true },

@@ -12,6 +12,14 @@ vi.mock("replicad-opencascadejs/wasm?url", () => ({
 }));
 
 describe("browser CAD integration", () => {
+  it("changes the printed slider when the detent spring is shortened", async () => {
+    const short = await generateModel({ rows: 1, columns: 1, detentSpringLength: 12 });
+    const long = await generateModel({ rows: 1, columns: 1, detentSpringLength: 18 });
+    expect(short.diagnostics.slider.volume).toBeGreaterThan(long.diagnostics.slider.volume);
+    expect(short.dimensions.detent?.springLength).toBe(12);
+    expect(long.dimensions.detent?.springLength).toBe(18);
+  }, 120_000);
+
   it("generates M2 4x2 exports and diagnostics", async () => {
     const model = await generateModel({ rows: 4, columns: 2, screw: "M2", joint: "screws" });
     expect(model.files["base.stl"].size).toBeGreaterThan(0);
@@ -19,14 +27,18 @@ describe("browser CAD integration", () => {
     expect(model.verification.completed).toContain("4 valid single solids");
     expect(model.verification.completed).toContain("Detent pockets retain the base floor; inter-station clearance verified");
     expect(model.verification.completed).toContain("Thin frame, reinforced corners, and lid skin verified");
+    expect(model.verification.completed).toContain("Overlapping storage handles and closed-lid discharge plug verified");
     expect(model.verification.completed).toContain("Coaxial corner fasteners and magnet pockets remain vertically separated");
     expect(model.dimensions.joints).toEqual(model.dimensions.magnets);
     expect(model.verification.completed).toContain("Assembly screw counterbore retains its head seat and 45-degree roof");
+    expect(model.verification.completed).toContain("Tapered registration lands and sockets retain 45-degree printable faces");
     expect(model.dimensions.screwSpaceHeight).toBe(15);
     expect(model.dimensions.deckThickness).toBe(1.6);
     expect(model.dimensions.drop - model.dimensions.head).toBeCloseTo(0.3);
     expect(model.dimensions.window - model.dimensions.head).toBeCloseTo(1);
     expect(model.dimensions.sliderZ - model.dimensions.floor).toBeCloseTo(0.2);
+    expect(model.diagnostics.tray.bounds.max[0]).toBeGreaterThan(model.dimensions.length + 18);
+    expect(model.diagnostics.slider.bounds.max[0]).toBeGreaterThan(model.dimensions.length + 18);
     expect(model.dimensions.detent?.nominalDeflection).toBeCloseTo(0.7);
     for (const part of ["base", "tray", "slider", "lid"] as const) {
       expect(model.diagnostics[part].volume).toBeGreaterThan(0);
@@ -53,6 +65,7 @@ describe("browser CAD integration", () => {
     expect(model.verification.completed).toContain("Release, retention, and shaft clearance checked at representative stations");
     expect(model.verification.completed).toContain("Coaxial corner fasteners and magnet pockets remain vertically separated");
     expect(model.verification.completed).toContain("Thin frame, reinforced corners, and lid skin verified");
+    expect(model.verification.completed).toContain("Overlapping storage handles and closed-lid discharge plug verified");
     expect(model.files["assembly.step"].size).toBeGreaterThan(0);
     expect(model.dimensions.screwXs).toHaveLength(settings.columns);
     expect(model.dimensions.screwYs).toHaveLength(settings.rows);

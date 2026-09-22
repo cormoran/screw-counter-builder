@@ -24,24 +24,6 @@ const intersectionVolume = (left: Shape3D, right: Shape3D) => measureShapeVolume
 const cone = (x: number, y: number, z: number, lowerRadius: number, upperRadius: number, height: number): Shape3D =>
   sketchCircle(lowerRadius, { plane: "XY", origin: [x, y, z] }).loftWith(sketchCircle(upperRadius, { plane: "XY", origin: [x, y, z + height] }), {});
 
-const DIGIT_SEGMENTS: Record<string, readonly number[]> = {
-  "0": [0, 1, 2, 3, 4, 5], "1": [1, 2], "2": [0, 1, 6, 4, 3], "3": [0, 1, 6, 2, 3], "4": [5, 6, 1, 2],
-  "5": [0, 5, 6, 2, 3], "6": [0, 5, 6, 4, 2, 3], "7": [0, 1, 2], "8": [0, 1, 2, 3, 4, 5, 6], "9": [0, 1, 2, 3, 5, 6],
-};
-/** Font-free seven-segment engraving avoids browser font loading and produces stable B-Rep cuts. */
-function digitCut(text: string, x: number, y: number, z: number): Shape3D {
-  const w = 0.95; const h = 1.75; const t = 0.22; const gap = 0.2;
-  const segments = [box(0, h - t, 0, w, t, 0.4), box(w - t, h / 2, 0, t, h / 2 - t, 0.4), box(w - t, 0, 0, t, h / 2 - t, 0.4), box(0, 0, 0, w, t, 0.4), box(0, 0, 0, t, h / 2 - t, 0.4), box(0, h / 2, 0, t, h / 2 - t, 0.4), box(0, h / 2 - t / 2, 0, w, t, 0.4)];
-  let result: Shape3D | undefined;
-  [...text].forEach((char, index) => {
-    for (const segment of DIGIT_SEGMENTS[char] ?? []) {
-      const translated = segments[segment].clone().translate(x + index * (w + gap), y, z);
-      result = result ? result.fuse(translated) : translated;
-    }
-  });
-  if (!result) throw new Error(`Unsupported scale digit: ${text}`);
-  return result;
-}
 const printOrientation = (shape: Shape3D): Shape3D => {
   const [min] = shape.boundingBox.bounds;
   return shape.translate(-min[0], -min[1], -min[2]);
@@ -56,7 +38,10 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     .cut(box(7.7, d.wall, d.floor, d.length, d.width - 2 * d.wall, d.joinZ + 1))
     .cut(box(7.7, d.wall + 3, -0.1, d.length, d.width - 2 * (d.wall + 3), d.joinZ + 1));
   for (const p of d.joints) {
-    base = base.fuse(cylinder(p.x, p.y, d.joinZ, 2, 1.2).chamfer(0.2, (finder, shape) => finder.when(topMost(shape)).parallelTo("XY")));
+    // Keep 0.6 mm of material around the R1.2 through-hole at the narrow end.
+    // The land narrows by 1.2 mm over its 1.2 mm height, so its exterior is a
+    // 45-degree face that prints without support and matches the tray socket.
+    base = base.fuse(cone(p.x, p.y, d.joinZ, 3, 1.8, 1.2));
     if (settings.joint === "screws") {
       // Preserve the flat 2.3 mm-deep seat for an M2 head. Above it, a 1.1 mm
       // radial reduction over 1.1 mm of height makes a 45-degree printable roof.
@@ -68,17 +53,39 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   options.onProgress?.({ phase: "building", completed: 1, total: 4, message: "Built base" });
   let tray = rounded(0, 0, d.joinZ, d.length, d.width, d.deckThickness, 4);
   const frameWall = 2.4;
+  // This ring shares the slider grip's XY opening. With the slider fully
+  // inserted, a hook can pass through both openings while their separate Z
+  // levels keep the moving slider clear of the tray.
+  const storageHandleX = d.length;
+  const storageHandleLength = 19;
+  const storageHandleOpeningX = storageHandleX + 5;
+  const storageHandleOpeningLength = 8;
+  const storageHandleY = d.sliderInsetY - 3;
+  const storageHandleOpeningY = d.sliderInsetY + 3;
+  const storageHandleWidth = d.width - 2 * d.sliderInsetY + 6;
+  const storageHandleOpeningWidth = d.width - 2 * d.sliderInsetY - 6;
+  const drainY = d.width / 2 - 6;
+  const drainWidth = 12;
   let rim = rounded(0, 0, d.deckTop, d.length, d.width, d.top - d.deckTop, 4)
     .cut(rounded(frameWall, frameWall, d.deckTop - 0.1, d.length - 2 * frameWall, d.width - 2 * frameWall, d.top - d.deckTop + 0.2, 1.6));
   // One reinforced corner carries each magnet above its assembly screw.
   for (const p of d.magnets) rim = rim.fuse(cylinder(p.x, p.y, d.deckTop, d.magnetPocketDiameter / 2 + 1.3, d.top - d.deckTop));
   tray = tray.fuse(rim);
+  tray = tray
+    .fuse(rounded(storageHandleX, storageHandleY, d.joinZ, storageHandleLength, storageHandleWidth, d.deckThickness, 3))
+    .cut(rounded(storageHandleOpeningX, storageHandleOpeningY, d.joinZ - 0.1, storageHandleOpeningLength, storageHandleOpeningWidth, d.deckThickness + 0.2, 2))
+    // Open only the upper rim: the continuous deck remains the runway that
+    // guides a screw to the front discharge opening.
+    .cut(box(-0.1, drainY, d.deckTop - 0.1, frameWall + 0.2, drainWidth, d.top - d.deckTop + 0.2));
   for (const x of d.screwXs) for (const y of d.screwYs) {
     tray = tray.cut(cylinder(x, y, d.joinZ - 0.1, d.drop / 2, d.deckThickness + 0.2));
     tray = tray.cut(cone(x, y, d.deckTop - 0.3, d.drop / 2, d.drop / 2 + TRAY_ENTRY_RADIAL_FLARE, 0.3));
   }
   for (const p of d.joints) {
-    tray = tray.cut(cylinder(p.x, p.y, d.joinZ - 0.05, 2.2, 1.5));
+    // Start 0.2 mm wider than the tapered base land at the mating plane. The
+    // 45-degree socket reaches the R0.85 pilot continuously, leaving no flat
+    // inner ceiling that would need bridging or support below the tray deck.
+    tray = tray.cut(cone(p.x, p.y, d.joinZ - 0.05, 3.25, 0.85, 2.4));
     if (settings.joint === "screws") tray = tray.cut(cylinder(p.x, p.y, d.joinZ + 1.4, 0.85, 2));
   }
   options.onProgress?.({ phase: "building", completed: 2, total: 4, message: "Built tray" });
@@ -89,23 +96,21 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   for (const y of d.screwYs) slider = slider.cut(rounded(d.releaseX - 1, y - d.slot / 2, d.sliderZ - 0.1, last + 3 - (d.releaseX - 1), d.slot, d.sliderThickness + 0.2, d.slot / 2 - 0.02)).cut(rounded(d.releaseX - d.window / 2, y - d.window / 2, d.sliderZ - 0.1, d.window, d.window, d.sliderThickness + 0.2, 0.65));
   if (d.detent) {
     const edge = d.width - d.sliderInsetY;
-    slider = slider.cut(rounded(10, edge - d.detent.springWidth - d.detent.reliefGap, d.sliderZ - 0.1, 17, d.detent.reliefGap, d.sliderThickness + 0.2, 0.45)).cut(box(10, edge - d.detent.springWidth - d.detent.reliefGap + 0.4, d.sliderZ - 0.1, 0.8, d.detent.springWidth + d.detent.reliefGap + 2, d.sliderThickness + 0.2)).fuse(cylinder(d.detent.tipX, d.detent.tipY, d.sliderZ, d.detent.noseRadius, d.sliderThickness));
+    slider = slider.cut(rounded(10, edge - d.detent.springWidth - d.detent.reliefGap, d.sliderZ - 0.1, d.detent.springLength + 2, d.detent.reliefGap, d.sliderThickness + 0.2, 0.45)).cut(box(10, edge - d.detent.springWidth - d.detent.reliefGap + 0.4, d.sliderZ - 0.1, 0.8, d.detent.springWidth + d.detent.reliefGap + 2, d.sliderThickness + 0.2)).fuse(cylinder(d.detent.tipX, d.detent.tipY, d.sliderZ, d.detent.noseRadius, d.sliderThickness));
     // The notch only needs to open into the slider channel. Keep the full
     // floor below it so the detent does not perforate the printed underside.
     for (const x of d.detent.notchX) base = base.cut(cylinder(x, d.detent.tipY, d.floor, d.detent.notchRadius, d.joinZ - d.floor + 0.1));
   }
   options.onProgress?.({ phase: "building", completed: 3, total: 4, message: "Built slider" });
-  for (let i = 0; i <= settings.columns; i += 1) {
-    const x = d.length - d.pitch * i;
-    slider = slider.cut(box(x - 0.18, d.sliderInsetY + 0.65, d.sliderZ + d.sliderThickness - 0.3, 0.36, 2.3, 0.4));
-    slider = slider.cut(digitCut(String(i), x + 1.8, d.sliderInsetY + 2, d.sliderZ + d.sliderThickness - 0.3));
-  }
   let lid = rounded(0, 0, d.top, d.length, d.width, 3.4, 4).fuse(rounded(d.length - 1, d.width / 2 - 7, d.top, 6, 14, 3.4, 2.5));
   const lidPocketInset = d.rim + 2;
   lid = lid.cut(rounded(lidPocketInset, lidPocketInset, d.top - 0.1, d.length - 2 * lidPocketInset, d.width - 2 * lidPocketInset, 2.1, 2));
   const lip = rounded(d.rim + 0.35, d.rim + 0.35, d.top - 1.2, d.length - 2 * d.rim - 0.7, d.width - 2 * d.rim - 0.7, 1.3, 3.35)
     .cut(rounded(d.rim + 1.75, d.rim + 1.75, d.top - 1.3, d.length - 2 * d.rim - 3.5, d.width - 2 * d.rim - 3.5, 1.5, 2));
   lid = lid.fuse(lip).fillet(0.6, (finder, shape) => finder.when(topMost(shape)).parallelTo("XY"));
+  // The plug keys into the tray's front rim cutout with 0.2 mm lateral
+  // clearance. It reaches the deck so a closed lid cannot let screws escape.
+  lid = lid.fuse(rounded(0.1, drainY + 0.1, d.deckTop, frameWall - 0.2, drainWidth - 0.2, d.top - d.deckTop + 0.1, 0.5));
   for (const p of d.magnets) {
     tray = tray.cut(cylinder(p.x, p.y, d.top - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
     lid = lid.cut(cylinder(p.x, p.y, d.top - 0.1, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
@@ -171,6 +176,18 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     throw new Error("Lid center pocket or roof is missing");
   }
   completed.push("Thin frame, reinforced corners, and lid skin verified");
+  const handleCenterX = storageHandleOpeningX + storageHandleOpeningLength / 2;
+  const handleCenterY = d.width / 2;
+  if (tray.boundingBox.bounds[1][0] < storageHandleX + storageHandleLength - 0.1 ||
+      intersectionVolume(tray, cylinder(handleCenterX, handleCenterY, d.joinZ - 0.1, 0.3, d.deckThickness + 0.2)) >= 1e-5 ||
+      intersectionVolume(slider, cylinder(handleCenterX, handleCenterY, d.sliderZ - 0.1, 0.3, d.sliderThickness + 0.2)) >= 1e-5) {
+    throw new Error("Tray and slider storage handles must retain overlapping hook openings");
+  }
+  const drainProbe = cylinder(frameWall / 2, d.width / 2, d.deckTop + 0.2, 0.3, 0.5);
+  if (intersectionVolume(tray, drainProbe) >= 1e-5 || intersectionVolume(lid, drainProbe) < 0.05) {
+    throw new Error("Tray discharge cutout or closed-lid retention plug is missing");
+  }
+  completed.push("Overlapping storage handles and closed-lid discharge plug verified");
   if (settings.joint === "screws") {
     const p = d.joints[0];
     if (intersectionVolume(base, cylinder(p.x + 1.8, p.y, 2.45, 0.08, 0.15)) >= 1e-5 ||
@@ -179,6 +196,19 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     }
     completed.push("Assembly screw counterbore retains its head seat and 45-degree roof");
   }
+  const joint = d.joints[0];
+  // Both printed mating surfaces taper one millimetre per millimetre. Samples
+  // on either side of the former vertical walls catch an accidental regression
+  // to a cylindrical peg or a flat-bottomed tray socket.
+  const lowerBaseLand = intersectionVolume(base, cylinder(joint.x + 2.7, joint.y, d.joinZ + 0.15, 0.05, 0.15));
+  const upperBaseLand = intersectionVolume(base, cylinder(joint.x + 2.0, joint.y, d.joinZ + 1.05, 0.05, 0.15));
+  const baseTipWall = intersectionVolume(base, cylinder(joint.x + 1.5, joint.y, d.joinZ + 1.05, 0.05, 0.15));
+  const lowerTraySocket = intersectionVolume(tray, cylinder(joint.x + 2.7, joint.y, d.joinZ + 0.15, 0.05, 0.15));
+  const upperTraySocket = intersectionVolume(tray, cylinder(joint.x + 2.4, joint.y, d.joinZ + 1.05, 0.05, 0.15));
+  if (lowerBaseLand < 1e-4 || upperBaseLand >= 1e-5 || baseTipWall < 0.001 || lowerTraySocket >= 1e-5 || upperTraySocket < 0.001) {
+    throw new Error("Registration joint must retain matching 45-degree tapers");
+  }
+  completed.push("Tapered registration lands and sockets retain 45-degree printable faces");
   if (d.detent) {
     const tip = cylinder(d.detent.tipX, d.detent.tipY, d.sliderZ, d.detent.noseRadius, d.sliderThickness);
     const rigidSlider = slider.cut(tip);

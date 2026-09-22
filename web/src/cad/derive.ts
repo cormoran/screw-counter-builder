@@ -45,7 +45,7 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
     result.detent = {
       tipX: 12, tipY, noseRadius: 1.1, notchRadius: 1.2,
       notchX: Array.from({ length: c.columns + 1 }, (_, index) => 12 + index * pitch),
-      springLength: 15, springWidth: c.detentSpringWidth, springHeight: sliderThickness,
+      springLength: c.detentSpringLength, springWidth: c.detentSpringWidth, springHeight: sliderThickness,
       reliefGap: 1.2, nominalDeflection: 0.7, maxLateralDeflection: 0.8,
       note: "Elastic interference between stops is intentional; forces not calibrated.",
     };

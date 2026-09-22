@@ -30,6 +30,13 @@ describe("browser CAD dimensions", () => {
     expect(validateSettings({ trayHoleClearance: 0.05 })).not.toEqual([]);
   });
 
+  it("uses the adjustable spring length and bounds its range", () => {
+    expect(deriveDimensions().detent?.springLength).toBe(13);
+    expect(deriveDimensions({ detentSpringLength: 18 }).detent?.springLength).toBe(18);
+    expect(validateSettings({ detentSpringLength: 11.5 })).not.toEqual([]);
+    expect(validateSettings({ detentSpringLength: 18.5 })).not.toEqual([]);
+  });
+
   it("rejects non-finite and oversized untrusted inputs", () => {
     expect(validateSettings({ magnetDiameter: Number.NaN })).not.toEqual([]);
     expect(validateSettings({ columns: 25 })).not.toEqual([]);
