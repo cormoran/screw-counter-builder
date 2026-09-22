@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { DerivedDimensions, ModelPart, TriangleMesh } from '../cad'
 import { DimensionPreview } from './DimensionPreview'
+import { text, type Language } from '../i18n'
 
 export type ViewMode = 'assembled' | 'exploded' | '2d'
 export type ViewerCameraState = {
@@ -28,6 +29,7 @@ function storeCamera(camera: ViewerCameraState): void {
 }
 type Props = {
   meshes: Partial<Record<ModelPart, TriangleMesh>>
+  language: Language
   dimensions?: DerivedDimensions | null
   mode: ViewMode
   cameraState: { current: ViewerCameraState | null }
@@ -43,14 +45,14 @@ type ViewerRuntime = {
   update: (meshes: Props['meshes'], printPlateSize?: Props['printPlateSize']) => void
 }
 
-const PARTS: readonly { id: ModelPart; label: string; color: number; offset: [number, number, number] }[] = [
-  { id: 'base', label: 'ベース', color: 0x64748b, offset: [-8, -7, -4] },
-  { id: 'tray', label: 'トレー', color: 0x0f766e, offset: [8, 7, 5] },
-  { id: 'slider', label: 'スライダー', color: 0xd97706, offset: [0, -11, 1] },
-  { id: 'lid', label: 'ふた', color: 0x3b82f6, offset: [0, 0, 19] },
+const PARTS: readonly { id: ModelPart; label: 'base' | 'tray' | 'slider' | 'lid'; color: number; offset: [number, number, number] }[] = [
+  { id: 'base', label: 'base', color: 0x64748b, offset: [-8, -7, -4] },
+  { id: 'tray', label: 'tray', color: 0x0f766e, offset: [8, 7, 5] },
+  { id: 'slider', label: 'slider', color: 0xd97706, offset: [0, -11, 1] },
+  { id: 'lid', label: 'lid', color: 0x3b82f6, offset: [0, 0, 19] },
 ]
 
-export function ModelViewer({ meshes, dimensions = null, mode, cameraState, printPlateSize }: Props) {
+export function ModelViewer({ language, meshes, dimensions = null, mode, cameraState, printPlateSize }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const [separation, setSeparation] = useState(100)
   const [visibleParts, setVisibleParts] = useState<Partial<Record<ModelPart, boolean>>>({})
@@ -265,15 +267,15 @@ export function ModelViewer({ meshes, dimensions = null, mode, cameraState, prin
 
   return <div className="model-viewer">
     {!printPlateSize && mode !== '2d' && <label className="separation-control">
-      <span>分離距離</span>
+      <span>{text(language, 'separation')}</span>
       <input type="range" min="0" max="180" step="5" value={separation} disabled={mode !== 'exploded'} onChange={(event) => setSeparation(Number(event.target.value))} />
       <output>{separation}%</output>
     </label>}
-    {mode === '2d' && !printPlateSize ? <DimensionPreview dimensions={dimensions} /> : <>
-      {webglUnavailable ? <div className="viewer-fallback">このブラウザでは3Dプレビューを表示できません。ダウンロードしたSTLまたはSTEPをご利用ください。</div> : <div className="viewer-stage"><div className="viewer-canvas" ref={host} aria-label={printPlateSize ? '印刷プレート上の配置を回転・移動・ズームできる3Dプレビュー' : 'クリックでパーツを表示・非表示にできる3Dプレビュー'} /></div>}
-      {!printPlateSize && <div className="part-controls" role="group" aria-label="3Dパーツの表示切替">{PARTS.filter(({ id }) => Boolean(meshes[id])).map(({ id, label }) => <button key={id} type="button" className={`${id}${visibleParts[id] === false ? ' hidden' : ''}`} aria-pressed={visibleParts[id] !== false} onClick={() => togglePart(id)}>{label}</button>)}</div>}
-      <div className="part-legend" aria-label="パーツの色">{PARTS.filter(({ id }) => Boolean(meshes[id])).map(({ id, label }) => <span key={id} className={id}>{label}</span>)}</div>
-      <p className="viewer-help">{printPlateSize ? `${printPlateSize.width} × ${printPlateSize.depth} mmプレート。` : 'パーツ名またはモデルをクリックして表示・非表示を切り替えます。'} ドラッグで回転、右ドラッグまたは2本指で移動、ホイールまたはピンチで拡大・縮小</p>
+    {mode === '2d' && !printPlateSize ? <DimensionPreview dimensions={dimensions} language={language} /> : <>
+      {webglUnavailable ? <div className="viewer-fallback">{text(language, 'noWebgl')}</div> : <div className="viewer-stage"><div className="viewer-canvas" ref={host} aria-label={text(language, printPlateSize ? 'printPlatePreview' : 'modelPreview')} /></div>}
+      {!printPlateSize && <div className="part-controls" role="group" aria-label={text(language, 'partVisibility')}>{PARTS.filter(({ id }) => Boolean(meshes[id])).map(({ id, label }) => <button key={id} type="button" className={`${id}${visibleParts[id] === false ? ' hidden' : ''}`} aria-pressed={visibleParts[id] !== false} onClick={() => togglePart(id)}>{text(language, label)}</button>)}</div>}
+      <div className="part-legend" aria-label={text(language, 'partColors')}>{PARTS.filter(({ id }) => Boolean(meshes[id])).map(({ id, label }) => <span key={id} className={id}>{text(language, label)}</span>)}</div>
+      <p className="viewer-help">{printPlateSize ? text(language, 'printPlateHelp', printPlateSize) : text(language, 'modelHelp')} {text(language, 'viewerControls')}</p>
     </>}
   </div>
 }
