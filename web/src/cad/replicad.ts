@@ -81,7 +81,9 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   if (d.detent) {
     const edge = d.width - d.sliderInsetY;
     slider = slider.cut(rounded(10, edge - d.detent.springWidth - d.detent.reliefGap, d.sliderZ - 0.1, 17, d.detent.reliefGap, d.sliderThickness + 0.2, 0.45)).cut(box(10, edge - d.detent.springWidth - d.detent.reliefGap + 0.4, d.sliderZ - 0.1, 0.8, d.detent.springWidth + d.detent.reliefGap + 2, d.sliderThickness + 0.2)).fuse(cylinder(12, edge - 0.2, d.sliderZ, 1, d.sliderThickness));
-    for (const x of d.detent.notchX) base = base.cut(cylinder(x, edge - 0.2, -0.1, 1.2, d.joinZ + 0.2));
+    // The notch only needs to open into the slider channel. Keep the full
+    // floor below it so the detent does not perforate the printed underside.
+    for (const x of d.detent.notchX) base = base.cut(cylinder(x, edge - 0.2, d.floor, 1.2, d.joinZ - d.floor + 0.1));
   }
   options.onProgress?.({ phase: "building", completed: 3, total: 4, message: "Built slider" });
   for (let i = 0; i <= settings.columns; i += 1) {
@@ -141,12 +143,15 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   if (d.detent) {
     const tip = cylinder(d.detent.tipX, d.detent.tipY, d.sliderZ, d.detent.noseRadius, d.sliderThickness);
     const rigidSlider = slider.cut(tip);
+    for (const x of d.detent.notchX) {
+      if (intersectionVolume(base, cylinder(x, d.detent.tipY, 0, 0.4, d.floor / 2)) < 0.3) throw new Error("Detent notch perforates the base floor");
+    }
     for (const fraction of [0.25, 0.5, 0.75]) {
       if (intersectionVolume(base, rigidSlider.clone().translate(d.pitch * fraction, 0, 0)) >= 1e-5) throw new Error("Detent slider body contacts rail between stations");
       if (intersectionVolume(base, tip.clone().translate(d.pitch * fraction, -0.8, 0)) >= 1e-5) throw new Error("Detent tip cannot deflect 0.8 mm");
     }
     if (d.detent.reliefGap <= d.detent.maxLateralDeflection + 0.2) throw new Error("Detent relief gap is too narrow");
-    completed.push("Detent inter-station clearance verified");
+    completed.push("Detent pockets retain the base floor; inter-station clearance verified");
   }
   } else {
     completed.push("Interactive preview geometry generated; export validation deferred");

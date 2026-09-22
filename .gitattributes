@@ -1,0 +1,2 @@
+generated/*.step -diff
+test/*.step -diff

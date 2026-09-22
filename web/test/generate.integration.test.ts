@@ -16,8 +16,9 @@ describe("browser CAD integration", () => {
     expect(model.files["base.stl"].size).toBeGreaterThan(0);
     expect(model.files["assembly.step"].size).toBeGreaterThan(0);
     expect(model.verification.completed).toContain("4 valid single solids");
+    expect(model.verification.completed).toContain("Detent pockets retain the base floor; inter-station clearance verified");
     const referenceVolumes = {
-      base: 4571.984940,
+      base: 4593.684573,
       tray: 16960.356573,
       slider: 3157.977700,
       lid: 8358.802246,

@@ -135,7 +135,8 @@ def build(c=SETTINGS):
         slider=slider.union(nose)
         notch_x=[12+k*d['pitch'] for k in range(c.columns+1)]
         for nx in notch_x:
-            base=base.cut(cylinder(nx,nose_y,-.1,1.2,J+.2))
+            # Open into the slider channel, retaining the base floor below.
+            base=base.cut(cylinder(nx,nose_y,d['floor'],1.2,J-d['floor']+.1))
         d['detent']={'tip_x':12.,'tip_y':nose_y,'nose_radius':1.,
                      'notch_radius':1.2,'notch_x':notch_x,'spring_length':15.,
                      'spring_width':bw,'spring_height':h,'relief_gap':gap,
@@ -207,6 +208,8 @@ def verify(parts,d,c,full=True):
         # only its nose may contact the rail; the main plate remains clear.
         dt=d['detent']; tip=cylinder(dt['tip_x'],dt['tip_y'],d['sz'],1,d['t'])
         rigid=parts['slider'].cut(tip)
+        for nx in dt['notch_x']:
+            assert common_volume(parts['base'],cylinder(nx,dt['tip_y'],0,.4,d['floor']/2))>.3,('through notch',nx)
         for fraction in [.25,.5,.75]:
             dx=d['pitch']*fraction
             assert common_volume(parts['base'],rigid.translate((dx,0,0)))<1e-5
