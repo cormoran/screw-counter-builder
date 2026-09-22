@@ -42,7 +42,7 @@ describe("browser CAD integration", () => {
     expect(model.files["assembly.step"].size).toBeGreaterThan(0);
     expect(model.verification.completed).toContain("4 valid single solids");
     expect(model.verification.completed).toContain("Detent pockets retain the base floor; inter-station clearance verified");
-    expect(model.verification.completed).toContain("Low-side pullout groove, 45-degree flexible slider tongue, and full release travel verified");
+    expect(model.verification.completed).toContain("Low-side pullout groove, rigid nose-length slider rib, and full release travel verified");
     expect(model.verification.completed).toContain("Thin frame, reinforced corners, and lid skin verified");
     expect(model.verification.completed).toContain("Overlapping storage handles, closed-lid discharge plug, and 45-degree internal gusset verified");
     expect(model.diagnostics.lid.bounds.min[0]).toBeGreaterThan(-1e-5);
@@ -91,7 +91,7 @@ describe("browser CAD integration", () => {
   ])("generates the $screw $rows x $columns $joint validation case", async (settings) => {
     const model = await generateModel(settings);
     expect(model.verification.completed).toContain("Release, retention, and shaft clearance checked at representative stations");
-    expect(model.verification.completed).toContain("Low-side pullout groove, 45-degree flexible slider tongue, and full release travel verified");
+    expect(model.verification.completed).toContain("Low-side pullout groove, rigid nose-length slider rib, and full release travel verified");
     expect(model.verification.completed).toContain("lidAlignment" in settings && settings.lidAlignment === "pegs"
       ? "Coaxial corner fasteners and lid alignment receptacles remain vertically separated"
       : "Coaxial corner fasteners and magnet pockets remain vertically separated");

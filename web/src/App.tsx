@@ -307,7 +307,7 @@ export default function App() {
           {model && <DownloadArea model={model} settings={settings} />}
           <div className="print-3mf">
             <h3>Bambu Studio 用3MF</h3>
-            <p>4部品を選択したプレートへ印刷向きで配置します。Bambu Studioで機種・材料・印刷条件を選んでスライスしてください。</p>
+            <p>4部品を選択したプレートへ印刷向きで配置します。Bambu Studioで機種・材料・印刷条件を選んでスライスしてください。組立時はスライダーをベースへ上から載せ、その後トレーを固定します。</p>
             <label className="plate-select" htmlFor="print-plate-size"><span>プレートサイズ</span><select id="print-plate-size" value={selectedPlateId} disabled={printState === 'generating'} onChange={(event) => selectPrintPlate(event.target.value as PrintPlateOption['id'])}>{PRINT_PLATE_OPTIONS.map((plate) => <option key={plate.id} value={plate.id}>{plate.label}（{plate.printers}）</option>)}</select></label>
             <button className="zip-button" type="button" disabled={state === 'generating' || printState === 'generating' || validation.length > 0} onClick={requestPrint3mf}>{printState === 'generating' ? '3MFを生成中…' : '3MFを生成してプレビュー'}</button>
             {printStatus && <p className={`print-status ${printState}`} role="status" aria-live="polite">{printState === 'generating' && <span className="spinner" aria-hidden="true" />}{printStatus}</p>}
