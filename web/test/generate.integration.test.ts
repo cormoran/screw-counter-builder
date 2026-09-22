@@ -17,17 +17,17 @@ describe("browser CAD integration", () => {
     expect(model.files["assembly.step"].size).toBeGreaterThan(0);
     expect(model.verification.completed).toContain("4 valid single solids");
     expect(model.verification.completed).toContain("Detent pockets retain the base floor; inter-station clearance verified");
-    const referenceVolumes = {
-      base: 4593.684573,
-      tray: 16960.356573,
-      slider: 3157.977700,
-      lid: 8358.802246,
-    } as const;
+    expect(model.verification.completed).toContain("Thin frame, reinforced fasteners, and lid skin verified");
+    expect(model.verification.completed).toContain("Assembly screw counterbore retains its head seat and 45-degree roof");
+    expect(model.dimensions.screwSpaceHeight).toBe(15);
+    expect(model.dimensions.deckThickness).toBe(1.6);
+    expect(model.dimensions.drop - model.dimensions.head).toBeCloseTo(0.6);
+    expect(model.dimensions.window - model.dimensions.head).toBeCloseTo(1);
+    expect(model.dimensions.sliderZ - model.dimensions.floor).toBeCloseTo(0.2);
+    expect(model.dimensions.detent?.nominalDeflection).toBeCloseTo(0.7);
     for (const part of ["base", "tray", "slider", "lid"] as const) {
       expect(model.diagnostics[part].volume).toBeGreaterThan(0);
       expect(model.diagnostics[part].bounds.max[0]).toBeGreaterThan(model.diagnostics[part].bounds.min[0]);
-      // The checked-in Python STL is meshed, so allow 0.2% rather than byte equality.
-      expect(Math.abs(model.diagnostics[part].volume / referenceVolumes[part] - 1)).toBeLessThan(0.002);
       const bytes = new Uint8Array(await model.files[`${part}.stl`].arrayBuffer());
       expect(bytes.byteLength).toBeGreaterThan(84);
       expect(new DataView(bytes.buffer).getUint32(80, true) * 50 + 84).toBe(bytes.byteLength);
@@ -49,6 +49,7 @@ describe("browser CAD integration", () => {
     const model = await generateModel(settings);
     expect(model.verification.completed).toContain("Release, retention, and shaft clearance checked at representative stations");
     expect(model.verification.completed).toContain("Magnet pockets and registration-boss clearance verified");
+    expect(model.verification.completed).toContain("Thin frame, reinforced fasteners, and lid skin verified");
     expect(model.files["assembly.step"].size).toBeGreaterThan(0);
     expect(model.dimensions.screwXs).toHaveLength(settings.columns);
     expect(model.dimensions.screwYs).toHaveLength(settings.rows);

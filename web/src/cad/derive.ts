@@ -1,15 +1,15 @@
 import { assertValidSettings, SCREW_PRESETS } from "./settings";
 import type { DerivedDimensions, Settings, SettingsInput } from "./types";
 
-/** Port of `dimension()` in design_screw_counter.py. */
+/** Browser CAD dimensions. Keep shape decisions here for future UI controls. */
 export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedDimensions {
   const c = assertValidSettings(input);
   const preset = SCREW_PRESETS[c.screw];
   const shaft = c.shaftDiameter ?? preset.shaft;
   const head = c.headDiameter ?? preset.head;
   const slot = c.slotWidth ?? preset.slot;
-  const drop = head + 1.2;
-  const window = head + 1.6;
+  const drop = head + 0.6;
+  const window = head + 1.0;
   const pitch = c.pitch ?? Math.max(preset.pitch, Math.ceil(window + 2));
   const rim = Math.max(10, c.magnetDiameter + 4);
   const wall = rim - 1.3;
@@ -25,7 +25,8 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
   const sliderZ = floor + c.slideClearance;
   const sliderThickness = 2;
   const joinZ = sliderZ + sliderThickness + c.slideClearance;
-  const deckTop = joinZ + 3;
+  const deckThickness = 1.6;
+  const deckTop = joinZ + deckThickness;
   // The lid lip projects 1.2 mm below the mating plane.
   const top = deckTop + c.screwSpaceHeight + 1.2;
   const jointXs = [Math.min(18, length / 2 - 4), Math.max(length - 18, length / 2 + 4)];
@@ -34,18 +35,19 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
   const magnets = [magnetCenter, length - magnetCenter].flatMap((x) => [magnetCenter, width - magnetCenter].map((y) => ({ x, y })));
   const result: DerivedDimensions = {
     shaft, head, slot, drop, window, pitch, rim, wall, sliderInsetY, releaseX,
-    screwXs, screwYs, length, width, floor, sliderZ, sliderThickness, joinZ, deckTop, screwSpaceHeight: c.screwSpaceHeight, top,
+    screwXs, screwYs, length, width, floor, sliderZ, sliderThickness, joinZ, deckThickness, deckTop, screwSpaceHeight: c.screwSpaceHeight, top,
     joints, magnets,
     magnetPocketDiameter: c.magnetDiameter + c.magnetDiameterClearance,
     magnetPocketDepth: c.magnetThickness + c.magnetDepthClearance,
   };
   if (c.detent) {
-    const tipY = width - sliderInsetY - 0.2;
+    // 0.7 mm nominal engagement at the rail, independent of slide clearance.
+    const tipY = width - wall - 0.4;
     result.detent = {
-      tipX: 12, tipY, noseRadius: 1, notchRadius: 1.2,
+      tipX: 12, tipY, noseRadius: 1.1, notchRadius: 1.2,
       notchX: Array.from({ length: c.columns + 1 }, (_, index) => 12 + index * pitch),
       springLength: 15, springWidth: c.detentSpringWidth, springHeight: sliderThickness,
-      reliefGap: 1.2, nominalDeflection: 0.8 - c.slideClearance, maxLateralDeflection: 0.8,
+      reliefGap: 1.2, nominalDeflection: 0.7, maxLateralDeflection: 0.8,
       note: "Elastic interference between stops is intentional; forces not calibrated.",
     };
   }

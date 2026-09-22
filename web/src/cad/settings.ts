@@ -6,7 +6,7 @@ export const SCREW_PRESETS: Readonly<Record<string, ScrewPreset>> = {
   M3: { shaft: 3, head: 6, slot: 3.6, pitch: 10 },
 };
 
-/** Matches the maintained Python builder defaults. */
+/** Browser design defaults, tuned from physical print feedback. */
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   detent: true,
   detentSpringWidth: 1.2,
@@ -18,8 +18,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   magnetThickness: 2,
   magnetDiameterClearance: 0.3,
   magnetDepthClearance: 0.15,
-  slideClearance: 0.3,
-  screwSpaceHeight: 5.6,
+  slideClearance: 0.2,
+  screwSpaceHeight: 15,
   headDiameter: null,
   shaftDiameter: null,
   slotWidth: null,
@@ -65,7 +65,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   const head = settings.headDiameter ?? preset.head;
   const slot = settings.slotWidth ?? preset.slot;
   if (!(shaft > 0 && shaft + 0.3 <= slot && slot <= head - 0.6)) errors.push("Need shaft + 0.3 <= slot <= head - 0.6; measure the actual screw");
-  const window = head + 1.6;
+  const window = head + 1.0;
   const pitch = settings.pitch ?? Math.max(preset.pitch, Math.ceil(window + 2));
   if (pitch < window + 1.8) errors.push("Pitch needs >= window + 1.8 mm for separated batches");
   return errors;
