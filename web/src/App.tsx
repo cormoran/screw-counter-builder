@@ -391,6 +391,7 @@ function localizeValidation(message: string) {
     'screwSpaceHeight must be 3.5..30 mm': 'ねじ収納スペースの高さは3.5〜30 mmにしてください。',
     'Magnet clearance is outside the supported range': '磁石穴のクリアランスが対応範囲を外れています。',
     'detentSpringWidth must be 1.0..1.5 mm': 'ばね幅は1.0〜1.5 mmにしてください。',
+    'detentSpringLength must be 12..18 mm': 'ばね長さは12〜18 mmにしてください。',
     'Need shaft + 0.3 <= slot <= head - 0.6; measure the actual screw': '軸径 + 0.3 mm ≤ スロット幅 ≤ 頭径 − 0.6 mm となるよう、実物のねじを測ってください。',
     'All numeric settings must be finite numbers': '数値欄には有限の値を入力してください。',
     'Pitch needs >= window + 1.8 mm for separated batches': 'ピッチをねじ頭の窓幅より1.8 mm以上大きくしてください。',

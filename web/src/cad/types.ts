@@ -5,6 +5,7 @@ export type JointType = "screws" | "glue";
 export interface Settings {
   detent: boolean;
   detentSpringWidth: number;
+  detentSpringLength: number;
   rows: number;
   columns: number;
   screw: ScrewSize;

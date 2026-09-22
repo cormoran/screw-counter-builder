@@ -28,6 +28,7 @@ export function resolveScrewDimensions(settings: Settings): { headDiameter: numb
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   detent: true,
   detentSpringWidth: 1.2,
+  detentSpringLength: 13,
   rows: 4,
   columns: 10,
   screw: "M2",
@@ -71,6 +72,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
     errors.push("Magnet clearance is outside the supported range");
   }
   if (settings.detentSpringWidth < 1 || settings.detentSpringWidth > 1.5) errors.push("detentSpringWidth must be 1.0..1.5 mm");
+  if (settings.detentSpringLength < 12 || settings.detentSpringLength > 18) errors.push("detentSpringLength must be 12..18 mm");
   // The short corner screw stops below the magnet pocket, even at minimum height.
   const deckTop = 1.6 + 2 * settings.slideClearance + 2 + 1.6;
   const magnetPocketBottom = deckTop + settings.screwSpaceHeight + 1.2 - settings.magnetThickness - settings.magnetDepthClearance;
@@ -78,7 +80,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   if (!preset) return errors;
   const numericValues = [
     settings.screwSpaceHeight, settings.magnetDiameter, settings.magnetThickness, settings.magnetDiameterClearance,
-    settings.magnetDepthClearance, settings.slideClearance, settings.trayHoleClearance, settings.detentSpringWidth,
+    settings.magnetDepthClearance, settings.slideClearance, settings.trayHoleClearance, settings.detentSpringWidth, settings.detentSpringLength,
     settings.headDiameter, settings.shaftDiameter, settings.slotWidth, settings.pitch,
   ];
   if (numericValues.some((value) => value !== null && !Number.isFinite(value))) {
