@@ -86,6 +86,29 @@ export default function App() {
     setState('ready')
   }
 
+  function resetSettings() {
+    const defaults = { ...DEFAULT_SETTINGS }
+    hasEditedSettings.current = false
+    saveSettings(defaults)
+    generation.current?.abort()
+    previewGeneration.current?.abort()
+    printRequest.current += 1
+    setSettings(defaults)
+    setModel(null)
+    setPreview(null)
+    setPreviewState('idle')
+    setPreviewStatus('事前生成プレビューを読み込んでいます…')
+    setPrintArtifact(null)
+    setShowPrintPreview(false)
+    setPreviewPlateIndex(0)
+    setPrintState('ready')
+    setPrintStatus('')
+    setState('ready')
+    setStatus('設定を既定値に戻しました。')
+    setPendingTransfer(null)
+    void loadInitialPreview()
+  }
+
   useEffect(() => {
     void loadInitialPreview()
   }, [])
@@ -263,7 +286,7 @@ export default function App() {
     </header>
     <div className="tool-layout">
       <section className="panel form-panel" aria-labelledby="settings-title">
-        <div className="section-heading"><h2 id="settings-title">設定</h2><span>基本</span></div>
+        <div className="section-heading settings-heading"><div><h2 id="settings-title">設定</h2><span>基本</span></div><button className="reset-button" type="button" disabled={!differsFromDefaults(settings)} onClick={resetSettings}>既定値に戻す</button></div>
         {displayMeshes && !isPrintPreview && previewMode !== '2d' && <div className="settings-mini-preview"><DimensionPreview dimensions={displayDimensions} compact /></div>}
         <SettingsForm fields={SETTINGS_FIELDS.filter((field) => field.category === 'basic')} settings={settings} onChange={update} />
         <button className="details-button" type="button" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}>
