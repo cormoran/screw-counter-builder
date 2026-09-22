@@ -23,6 +23,9 @@ const rounded = (x: number, y: number, z: number, dx: number, dy: number, dz: nu
 const handleWithSquareRoot = (x: number, y: number, z: number, length: number, width: number, thickness: number): Shape3D =>
   box(x, y, z, length - 3, width, thickness)
     .fuse(rounded(x + length - 6, y, z, 6, width, thickness, 2.8));
+const sliderBodyWithSquareHandleEnd = (x: number, y: number, z: number, length: number, width: number, thickness: number): Shape3D =>
+  rounded(x, y, z, 3.2, width, thickness, 1.5)
+    .fuse(box(x + 1.6, y, z, length - 1.6, width, thickness));
 const intersectionVolume = (left: Shape3D, right: Shape3D) => measureShapeVolumeProperties(left.intersect(right)).volume;
 const cone = (x: number, y: number, z: number, lowerRadius: number, upperRadius: number, height: number): Shape3D =>
   sketchCircle(lowerRadius, { plane: "XY", origin: [x, y, z] }).loftWith(sketchCircle(upperRadius, { plane: "XY", origin: [x, y, z + height] }), {});
@@ -197,7 +200,10 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const sw = d.width - 2 * d.sliderInsetY;
   let slider = reusable("slider")?.shape;
   if (!slider) {
-    slider = rounded(8, d.sliderInsetY, d.sliderZ, d.length - 8, sw, d.sliderThickness, 1.5).fuse(handleWithSquareRoot(d.length, storageHandleY, d.sliderZ, storageHandleLength, storageHandleWidth, d.sliderThickness));
+    // Keep the handle's outward-facing root corners rounded. Square the body
+    // end instead, so its inward-facing junction corners do not form a fillet.
+    slider = sliderBodyWithSquareHandleEnd(8, d.sliderInsetY, d.sliderZ, d.length - 8, sw, d.sliderThickness)
+      .fuse(rounded(d.length, storageHandleY, d.sliderZ, storageHandleLength, storageHandleWidth, d.sliderThickness, 3));
     slider = slider.cut(rounded(storageHandleOpeningX, storageHandleOpeningY, d.sliderZ - 0.1, storageHandleOpeningLength, storageHandleOpeningWidth, d.sliderThickness + 0.2, 2));
     // A U-slot leaves a low-side cantilever tongue. Its lug enters the base
     // groove during normal travel and flexes inward to pass the closed end on
@@ -420,13 +426,15 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const rootCornerX = storageHandleX + 0.5;
   const rootCornerY = storageHandleY + 0.3;
   const tipCornerX = storageHandleX + storageHandleLength - 0.5;
-  for (const [part, z] of [[tray, d.joinZ], [slider, d.sliderZ]] as const) {
-    if (intersectionVolume(part, cylinder(rootCornerX, rootCornerY, z + 0.5, 0.1, 0.1)) < 0.002 ||
-        intersectionVolume(part, cylinder(tipCornerX, rootCornerY, z + 0.5, 0.1, 0.1)) >= 1e-5) {
-      throw new Error("Storage handles must have square roots and rounded outer tips");
-    }
+  if (intersectionVolume(tray, cylinder(rootCornerX, rootCornerY, d.joinZ + 0.5, 0.1, 0.1)) < 0.002 ||
+      intersectionVolume(tray, cylinder(tipCornerX, rootCornerY, d.joinZ + 0.5, 0.1, 0.1)) >= 1e-5 ||
+      intersectionVolume(slider, cylinder(rootCornerX, rootCornerY, d.sliderZ + 0.5, 0.1, 0.1)) >= 1e-5 ||
+      intersectionVolume(slider, cylinder(storageHandleX + 2.5, rootCornerY, d.sliderZ + 0.5, 0.1, 0.1)) < 0.002 ||
+      intersectionVolume(slider, cylinder(storageHandleX - 0.3, d.sliderInsetY + 0.3, d.sliderZ + 0.5, 0.1, 0.1)) < 0.002 ||
+      intersectionVolume(slider, cylinder(tipCornerX, rootCornerY, d.sliderZ + 0.5, 0.1, 0.1)) >= 1e-5) {
+    throw new Error("Tray handle root must be square; slider convex root rounded and concave body junction square");
   }
-  completed.push("Tray and slider handle roots are square while outer tips stay rounded");
+  completed.push("Tray handle root square; slider convex root rounded and concave body junction square");
   const handleRibProbeX = handleRibRootX + handleRibRun / 2;
   for (const probeY of [handleRibY + 1.5, handleCenterY, handleRibY + handleRibWidth - 1.5]) {
     if (intersectionVolume(tray, cylinder(handleRibProbeX, probeY, handleRibBaseZ + 0.8, 0.12, 0.12)) < 0.003 ||
