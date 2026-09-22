@@ -1,6 +1,6 @@
 import initOpenCascade from "replicad-opencascadejs";
 import openCascadeWasm from "replicad-opencascadejs/wasm?url";
-import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, sketchCircle, sketchRoundedRectangle, topMost } from "replicad";
+import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, Sketcher, sketchCircle, sketchRoundedRectangle, topMost } from "replicad";
 import type { Shape3D } from "replicad";
 import type { DerivedDimensions, GenerateOptions, GeneratedFileName, PartDiagnostic, Settings, TriangleMesh, VerificationResult } from "./types";
 import { TRAY_ENTRY_RADIAL_FLARE } from "./settings";
@@ -23,6 +23,13 @@ const rounded = (x: number, y: number, z: number, dx: number, dy: number, dz: nu
 const intersectionVolume = (left: Shape3D, right: Shape3D) => measureShapeVolumeProperties(left.intersect(right)).volume;
 const cone = (x: number, y: number, z: number, lowerRadius: number, upperRadius: number, height: number): Shape3D =>
   sketchCircle(lowerRadius, { plane: "XY", origin: [x, y, z] }).loftWith(sketchCircle(upperRadius, { plane: "XY", origin: [x, y, z + height] }), {});
+const gussetXZ = (points: Array<[number, number]>, y: number, width: number): Shape3D => {
+  // XZ's positive normal points toward -Y. Start at the near edge and extrude
+  // negatively so the prism occupies the requested positive-Y width.
+  const sketch = new Sketcher("XZ", [0, y, 0]).movePointerTo(points[0]);
+  for (const point of points.slice(1)) sketch.lineTo(point);
+  return sketch.close().extrude(-width);
+};
 
 const printOrientation = (shape: Shape3D): Shape3D => {
   const [min] = shape.boundingBox.bounds;
@@ -58,12 +65,13 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   // levels keep the moving slider clear of the tray.
   const storageHandleX = d.length;
   const storageHandleLength = 19;
-  const storageHandleOpeningX = storageHandleX + 5;
-  const storageHandleOpeningLength = 8;
+  const storageHandleOpeningX = storageHandleX + 6;
+  const storageHandleOpeningLength = 6;
   const storageHandleY = d.sliderInsetY - 3;
-  const storageHandleOpeningY = d.sliderInsetY + 3;
+  const storageHandleOpeningY = d.sliderInsetY + 4;
   const storageHandleWidth = d.width - 2 * d.sliderInsetY + 6;
-  const storageHandleOpeningWidth = d.width - 2 * d.sliderInsetY - 6;
+  const storageHandleOpeningWidth = d.width - 2 * d.sliderInsetY - 8;
+  const handleExtraThickness = 0.8;
   const drainY = d.width / 2 - 6;
   const drainWidth = 12;
   let rim = rounded(0, 0, d.deckTop, d.length, d.width, d.top - d.deckTop, 4)
@@ -72,8 +80,8 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   for (const p of d.magnets) rim = rim.fuse(cylinder(p.x, p.y, d.deckTop, d.magnetPocketDiameter / 2 + 1.3, d.top - d.deckTop));
   tray = tray.fuse(rim);
   tray = tray
-    .fuse(rounded(storageHandleX, storageHandleY, d.joinZ, storageHandleLength, storageHandleWidth, d.deckThickness, 3))
-    .cut(rounded(storageHandleOpeningX, storageHandleOpeningY, d.joinZ - 0.1, storageHandleOpeningLength, storageHandleOpeningWidth, d.deckThickness + 0.2, 2))
+    .fuse(rounded(storageHandleX, storageHandleY, d.joinZ, storageHandleLength, storageHandleWidth, d.deckThickness + handleExtraThickness, 3))
+    .cut(rounded(storageHandleOpeningX, storageHandleOpeningY, d.joinZ - 0.1, storageHandleOpeningLength, storageHandleOpeningWidth, d.deckThickness + handleExtraThickness + 0.2, 2))
     // Open only the upper rim: the continuous deck remains the runway that
     // guides a screw to the front discharge opening.
     .cut(box(-0.1, drainY, d.deckTop - 0.1, frameWall + 0.2, drainWidth, d.top - d.deckTop + 0.2));
@@ -90,8 +98,8 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   }
   options.onProgress?.({ phase: "building", completed: 2, total: 4, message: "Built tray" });
   const sw = d.width - 2 * d.sliderInsetY;
-  let slider = rounded(8, d.sliderInsetY, d.sliderZ, d.length - 8, sw, d.sliderThickness, 1.5).fuse(rounded(d.length, d.sliderInsetY - 3, d.sliderZ, 19, sw + 6, d.sliderThickness, 3));
-  slider = slider.cut(rounded(d.length + 5, d.sliderInsetY + 3, d.sliderZ - 0.1, 8, sw - 6, d.sliderThickness + 0.2, 2));
+  let slider = rounded(8, d.sliderInsetY, d.sliderZ, d.length - 8, sw, d.sliderThickness, 1.5).fuse(rounded(d.length, storageHandleY, d.sliderZ, storageHandleLength, storageHandleWidth, d.sliderThickness, 3));
+  slider = slider.cut(rounded(storageHandleOpeningX, storageHandleOpeningY, d.sliderZ - 0.1, storageHandleOpeningLength, storageHandleOpeningWidth, d.sliderThickness + 0.2, 2));
   const last = d.screwXs.at(-1)!;
   for (const y of d.screwYs) slider = slider.cut(rounded(d.releaseX - 1, y - d.slot / 2, d.sliderZ - 0.1, last + 3 - (d.releaseX - 1), d.slot, d.sliderThickness + 0.2, d.slot / 2 - 0.02)).cut(rounded(d.releaseX - d.window / 2, y - d.window / 2, d.sliderZ - 0.1, d.window, d.window, d.sliderThickness + 0.2, 0.65));
   if (d.detent) {
@@ -111,6 +119,18 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   // The plug keys into the tray's front rim cutout with 0.2 mm lateral
   // clearance. It reaches the deck so a closed lid cannot let screws escape.
   lid = lid.fuse(rounded(0.1, drainY + 0.1, d.deckTop, frameWall - 0.2, drainWidth - 0.2, d.top - d.deckTop + 0.1, 0.5));
+  // A short front tab gives the long discharge plug a broad root. Its 45-degree
+  // gusset lands on the plug below the lid, while the whole reinforcement stays
+  // in front of the tray so it cannot foul the rim, magnet pockets, or outlet.
+  const gussetRun = 4.2;
+  const gussetTopX = 1;
+  lid = lid
+    .fuse(box(gussetTopX - gussetRun, drainY + 0.1, d.top, gussetRun + 0.5, drainWidth - 0.2, 3.4))
+    .fuse(gussetXZ([
+      [gussetTopX - gussetRun, d.top],
+      [gussetTopX, d.top],
+      [gussetTopX, d.top - gussetRun],
+    ], drainY + 0.1, drainWidth - 0.2));
   for (const p of d.magnets) {
     tray = tray.cut(cylinder(p.x, p.y, d.top - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
     lid = lid.cut(cylinder(p.x, p.y, d.top - 0.1, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
@@ -183,11 +203,23 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       intersectionVolume(slider, cylinder(handleCenterX, handleCenterY, d.sliderZ - 0.1, 0.3, d.sliderThickness + 0.2)) >= 1e-5) {
     throw new Error("Tray and slider storage handles must retain overlapping hook openings");
   }
+  const gripX = storageHandleX + 5.5;
+  if (intersectionVolume(tray, cylinder(gripX, handleCenterY, d.deckTop + 0.3, 0.25, 0.3)) < 0.02 ||
+      intersectionVolume(slider, cylinder(gripX, handleCenterY, d.sliderZ + 0.8, 0.25, 0.3)) < 0.02) {
+    throw new Error("Tray and slider hook handles must retain their reinforced thickness");
+  }
+  completed.push("Tray and slider storage handles retain reinforced thickness");
   const drainProbe = cylinder(frameWall / 2, d.width / 2, d.deckTop + 0.2, 0.3, 0.5);
   if (intersectionVolume(tray, drainProbe) >= 1e-5 || intersectionVolume(lid, drainProbe) < 0.05) {
     throw new Error("Tray discharge cutout or closed-lid retention plug is missing");
   }
-  completed.push("Overlapping storage handles and closed-lid discharge plug verified");
+  const gussetY = d.width / 2;
+  const gussetMaterial = cylinder(-1.2, gussetY, d.top - 1.75, 0.12, 0.12);
+  const belowGusset = cylinder(-1.2, gussetY, d.top - 2.25, 0.12, 0.12);
+  if (intersectionVolume(lid, gussetMaterial) < 0.003 || intersectionVolume(lid, belowGusset) >= 1e-5) {
+    throw new Error("Lid discharge plug must retain its 45-degree external gusset");
+  }
+  completed.push("Overlapping storage handles, closed-lid discharge plug, and 45-degree gusset verified");
   if (settings.joint === "screws") {
     const p = d.joints[0];
     if (intersectionVolume(base, cylinder(p.x + 1.8, p.y, 2.45, 0.08, 0.15)) >= 1e-5 ||

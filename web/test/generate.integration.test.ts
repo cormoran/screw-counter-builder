@@ -27,7 +27,8 @@ describe("browser CAD integration", () => {
     expect(model.verification.completed).toContain("4 valid single solids");
     expect(model.verification.completed).toContain("Detent pockets retain the base floor; inter-station clearance verified");
     expect(model.verification.completed).toContain("Thin frame, reinforced corners, and lid skin verified");
-    expect(model.verification.completed).toContain("Overlapping storage handles and closed-lid discharge plug verified");
+    expect(model.verification.completed).toContain("Overlapping storage handles, closed-lid discharge plug, and 45-degree gusset verified");
+    expect(model.verification.completed).toContain("Tray and slider storage handles retain reinforced thickness");
     expect(model.verification.completed).toContain("Coaxial corner fasteners and magnet pockets remain vertically separated");
     expect(model.dimensions.joints).toEqual(model.dimensions.magnets);
     expect(model.verification.completed).toContain("Assembly screw counterbore retains its head seat and 45-degree roof");
@@ -37,6 +38,8 @@ describe("browser CAD integration", () => {
     expect(model.dimensions.drop - model.dimensions.head).toBeCloseTo(0.3);
     expect(model.dimensions.window - model.dimensions.head).toBeCloseTo(1);
     expect(model.dimensions.sliderZ - model.dimensions.floor).toBeCloseTo(0.2);
+    expect(model.diagnostics.tray.bounds.min[2]).toBeCloseTo(model.dimensions.joinZ);
+    expect(model.diagnostics.slider.bounds.min[2]).toBeCloseTo(model.dimensions.sliderZ);
     expect(model.diagnostics.tray.bounds.max[0]).toBeGreaterThan(model.dimensions.length + 18);
     expect(model.diagnostics.slider.bounds.max[0]).toBeGreaterThan(model.dimensions.length + 18);
     expect(model.dimensions.detent?.nominalDeflection).toBeCloseTo(0.7);
@@ -65,7 +68,7 @@ describe("browser CAD integration", () => {
     expect(model.verification.completed).toContain("Release, retention, and shaft clearance checked at representative stations");
     expect(model.verification.completed).toContain("Coaxial corner fasteners and magnet pockets remain vertically separated");
     expect(model.verification.completed).toContain("Thin frame, reinforced corners, and lid skin verified");
-    expect(model.verification.completed).toContain("Overlapping storage handles and closed-lid discharge plug verified");
+    expect(model.verification.completed).toContain("Overlapping storage handles, closed-lid discharge plug, and 45-degree gusset verified");
     expect(model.files["assembly.step"].size).toBeGreaterThan(0);
     expect(model.dimensions.screwXs).toHaveLength(settings.columns);
     expect(model.dimensions.screwYs).toHaveLength(settings.rows);
