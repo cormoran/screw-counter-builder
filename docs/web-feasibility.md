@@ -2,7 +2,7 @@
 
 ## 結論と確認レベル
 
-**静的サイト + ブラウザ内WASM CADで実現する方向が有望。ただし全4部品の同等生成は未実証。** まず短い移植スパイクで可否を確定し、その後にサイトを実装する。現時点でサイト、ブラウザ生成、公開環境は存在しない。
+**静的サイト + ブラウザ内WASM CADで実現する方向が有望。ただし全4部品の同等生成は未実証。** Replicadとbrepjs + occt-wasmを同じ小さな形状で比較してから採用ライブラリを決め、4部品の移植スパイクで可否を確定する。現時点でサイト、ブラウザ生成、公開環境は存在しない。
 
 この調査で確認したのは、既存コードの構造、同梱済み出力、候補ライブラリの公開APIである。ブラウザでこのモデルを実際に生成した結果ではない。この環境にCadQueryはインストールされていないため、Python版の再生成や速度計測も行っていない。既存の寸法JSONは過去の生成結果として参照した。
 
@@ -23,12 +23,13 @@
 
 |案|利点|課題|判断|
 |---|---|---|---|
-|Replicad + OpenCascade WASMをTypeScriptから使用|ブラウザ内B-Rep演算、メッシュ化、STL/STEP出力の公開APIがある。既存CadQueryと同系統のCADカーネル|CadQueryのコードはそのまま動かない。フィレットのエッジ指定、文字形状、組立STEP、検証API、計算時間を移植・実測する必要がある|第一候補。移植スパイクで判断|
-|OpenCascade.jsを直接使用|必要なOCCT機能を細かく使える|低レベルAPIの量とWASMビルド/保守負担が大きい|Replicadに不足する操作がある場合に再評価|
+|Replicad + OpenCascade WASMをTypeScriptから使用|ブラウザ内B-Rep演算、メッシュ化、STL/STEP出力、文字図形の公開APIがある。既存CadQueryと同系統のCADカーネル|CadQueryのコードはそのまま動かない。フィレットのエッジ指定、組立STEP、検証API、計算時間を移植・実測する必要がある|採用候補。brepjsと同条件で比較|
+|brepjs + occt-wasm|B-Rep、フィレット、ブーリアン演算、STL/STEP、組立、形状計測を公開APIで扱える。occt-wasmはWorkerと明示的なメモリ管理を備える|こちらも全面移植が必要。文字刻印、同等形状、性能を確認する。occt-wasmは新しいWASM機能を要求するため対応ブラウザに注意|採用候補。Replicadと同条件で比較|
+|occt-wasm / OpenCascade.jsを直接使用|必要なOCCT機能を細かく使える。occt-wasmには低レベルの検証・組立APIもある|形状作成の抽象化、エッジ選択、文字処理などを自前で実装する負担が増える。OpenCascade.jsのカスタムビルドは管理対象が増える|上位ライブラリで必要な操作が足りない場合に再評価|
 |Python/CadQueryをサーバーで実行|現行形状・検証を再利用できる|サーバー運用、処理キュー、リソース制限が必要。静的サイトだけでは完結しない|WASM移植が品質・性能で成立しない場合の代替|
 |メッシュ専用CAD/CSG|STLに絞れば選択肢が広い|現行STEPに相当する編集可能なB-Rep出力と形状比較が難しい|初版の要件には選ばない|
 
-Replicadの公式資料は[ライブラリ利用とWorker内WASM初期化](https://replicad.xyz/docs/use-as-a-library/)、[STL/STEPとプレビュー用メッシュのAPI](https://replicad.xyz/docs/api/classes/Shape/)、[文字図形](https://replicad.xyz/docs/api/functions/drawText/)を記載している。[組立STEPのエクスポータ](https://github.com/sgenoud/replicad/blob/main/packages/replicad/src/export/assemblyExporter.ts)もソース上にある。これらは**機能の存在**の根拠であり、このリポジトリのモデルでの動作保証ではない。`occt-import-js` は[STEP等の読み込み・三角形化が主用途](https://github.com/kovacsv/occt-import-js/blob/main/README.md)なので生成エンジンには採用しない。
+Replicadの公式資料は[ライブラリ利用とWorker内WASM初期化](https://replicad.xyz/docs/use-as-a-library/)、[STL/STEPとプレビュー用メッシュのAPI](https://replicad.xyz/docs/api/classes/Shape/)、[文字図形](https://replicad.xyz/docs/api/functions/drawText/)を記載している。[組立STEPのエクスポータ](https://github.com/sgenoud/replicad/blob/main/packages/replicad/src/export/assemblyExporter.ts)もソース上にある。[brepjsの公式README](https://github.com/andymai/brepjs)はB-Rep演算、STEP出力、組立を説明し、[occt-wasmの公式README](https://github.com/andymai/occt-wasm)はSTL/STEP、XCAF組立、Worker、対応ブラウザを説明している。[OpenCascade.jsの公式資料](https://ocjs.org/docs/app-dev-workflow/custom-builds)にはカスタムWASMビルドの手順がある。これらは**機能の存在**の根拠であり、このリポジトリのモデルでの動作保証ではない。OpenJSCADは[公式資料に列挙される出力形式にSTEPがない](https://github.com/jscad/OpenJSCAD.org/blob/master/jsdoc/tutorials/01_gettingStarted.md)ため、現行出力との同等性を優先する初版には選ばない。`occt-import-js` は[STEP等の読み込み・三角形化が主用途](https://github.com/kovacsv/occt-import-js/blob/main/README.md)なので生成エンジンには採用しない。
 
 ## 推奨アーキテクチャ
 
@@ -40,7 +41,7 @@ Replicadの公式資料は[ライブラリ利用とWorker内WASM初期化](https
 
 ## 最初の実装スパイクと合格条件
 
-1. バージョンを固定したReplicad/OpenCascade WASMをWorkerで読み込む。Webビルドを静的サーバーとGitHub Pages相当のサブパスで開き、WASMが取得できることを確認する。
+1. バージョンを固定したReplicad系とbrepjs + occt-wasm系で、同じ「角Rのある板 + 穴 + フィレット」をWorker内で生成し、STL/STEP出力、組立API、形状計測、WASM取得量、生成時間を比較する。少なくともデスクトップとiOS Safari相当でWASMが初期化できるか確認する。採用理由と除外理由を測定値付きで追記する。
 2. M2・4×2を**4部品すべて**移植し、印刷姿勢の各STLと組立STEPをブラウザから出力する。難所は縦エッジ/上面エッジのフィレット指定、トレーの多数の穴、文字のくり抜き、ばねとノッチ、蓋の反転とSTEP組立である。最初に文字を省略した形状で演算を通し、その後文字まで含める。
 3. Python版の同設定と外形寸法、部品数、ソリッド有効性、体積、各部品の位置、穴の中心/径を比較する。メッシュのバイト一致は要求しない。受け入れる数値許容差を比較前に決め、差分を記録する。スライダーの各停止位置で保持・落下・干渉を確認する。
 4. 標準M2・4×10、M1.5・3×3・接着、M3・6×3・ネジ、M2・1×1も実行し、全ファイルをCAD/スライサーで開く。デスクトップとスマートフォンで生成時間、ピークメモリ、初回WASM取得量を測る。測定後に入力上限と対応ブラウザを決める。
