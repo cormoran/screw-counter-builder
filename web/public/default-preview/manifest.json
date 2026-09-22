@@ -12,6 +12,7 @@
     "magnetDiameterClearance": 0.3,
     "magnetDepthClearance": 0.15,
     "slideClearance": 0.2,
+    "trayHoleClearance": 0.3,
     "screwSpaceHeight": 15,
     "headDiameter": null,
     "shaftDiameter": null,
@@ -25,5 +26,5 @@
     "lid": "lid.mesh"
   },
   "rawBytes": 1224672,
-  "gzipBytes": 272931
+  "gzipBytes": 272986
 }

@@ -6,6 +6,24 @@ export const SCREW_PRESETS: Readonly<Record<string, ScrewPreset>> = {
   M3: { shaft: 3, head: 6, slot: 3.6, pitch: 10 },
 };
 
+/** Diametral clearance at the straight through-hole, tuned from print feedback. */
+export const TRAY_HOLE_DIAMETER_CLEARANCE = 0.3;
+/** Extra radius at only the top 0.3 mm of the tray hole. */
+export const TRAY_ENTRY_RADIAL_FLARE = 0.1;
+export const RELEASE_WINDOW_DIAMETER_CLEARANCE = 1.0;
+
+export function resolveScrewDimensions(settings: Settings): { headDiameter: number; shaftDiameter: number; slotWidth: number; pitch: number } | null {
+  const preset = SCREW_PRESETS[settings.screw];
+  if (!preset) return null;
+  const headDiameter = settings.headDiameter ?? preset.head;
+  return {
+    headDiameter,
+    shaftDiameter: settings.shaftDiameter ?? preset.shaft,
+    slotWidth: settings.slotWidth ?? preset.slot,
+    pitch: settings.pitch ?? Math.max(preset.pitch, Math.ceil(headDiameter + RELEASE_WINDOW_DIAMETER_CLEARANCE + 2)),
+  };
+}
+
 /** Browser design defaults, tuned from physical print feedback. */
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   detent: true,
@@ -19,6 +37,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   magnetDiameterClearance: 0.3,
   magnetDepthClearance: 0.15,
   slideClearance: 0.2,
+  trayHoleClearance: TRAY_HOLE_DIAMETER_CLEARANCE,
   screwSpaceHeight: 15,
   headDiameter: null,
   shaftDiameter: null,
@@ -46,6 +65,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   if (settings.magnetDiameter < 3 || settings.magnetDiameter > 8) errors.push("Supported magnet diameter is 3..8 mm");
   if (settings.magnetThickness < 1 || settings.magnetThickness > 3) errors.push("Supported magnet thickness is 1..3 mm");
   if (settings.slideClearance < 0.15 || settings.slideClearance > 0.6) errors.push("slideClearance must be 0.15..0.6 mm");
+  if (settings.trayHoleClearance < 0.1 || settings.trayHoleClearance > 1.2) errors.push("trayHoleClearance must be 0.1..1.2 mm");
   if (settings.screwSpaceHeight < 3.5 || settings.screwSpaceHeight > 30) errors.push("screwSpaceHeight must be 3.5..30 mm");
   if (settings.magnetDiameterClearance < 0 || settings.magnetDiameterClearance > 0.6 || settings.magnetDepthClearance < 0 || settings.magnetDepthClearance > 0.3) {
     errors.push("Magnet clearance is outside the supported range");
@@ -58,19 +78,20 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   if (!preset) return errors;
   const numericValues = [
     settings.screwSpaceHeight, settings.magnetDiameter, settings.magnetThickness, settings.magnetDiameterClearance,
-    settings.magnetDepthClearance, settings.slideClearance, settings.detentSpringWidth,
+    settings.magnetDepthClearance, settings.slideClearance, settings.trayHoleClearance, settings.detentSpringWidth,
     settings.headDiameter, settings.shaftDiameter, settings.slotWidth, settings.pitch,
   ];
   if (numericValues.some((value) => value !== null && !Number.isFinite(value))) {
     errors.push("All numeric settings must be finite numbers");
     return errors;
   }
-  const shaft = settings.shaftDiameter ?? preset.shaft;
-  const head = settings.headDiameter ?? preset.head;
-  const slot = settings.slotWidth ?? preset.slot;
+  const resolved = resolveScrewDimensions(settings)!;
+  const shaft = resolved.shaftDiameter;
+  const head = resolved.headDiameter;
+  const slot = resolved.slotWidth;
   if (!(shaft > 0 && shaft + 0.3 <= slot && slot <= head - 0.6)) errors.push("Need shaft + 0.3 <= slot <= head - 0.6; measure the actual screw");
-  const window = head + 1.0;
-  const pitch = settings.pitch ?? Math.max(preset.pitch, Math.ceil(window + 2));
+  const window = head + RELEASE_WINDOW_DIAMETER_CLEARANCE;
+  const pitch = resolved.pitch;
   if (pitch < window + 1.8) errors.push("Pitch needs >= window + 1.8 mm for separated batches");
   return errors;
 }

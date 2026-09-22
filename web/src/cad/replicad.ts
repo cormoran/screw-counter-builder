@@ -3,6 +3,7 @@ import openCascadeWasm from "replicad-opencascadejs/wasm?url";
 import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, sketchCircle, sketchRoundedRectangle, topMost } from "replicad";
 import type { Shape3D } from "replicad";
 import type { DerivedDimensions, GenerateOptions, GeneratedFileName, PartDiagnostic, Settings, TriangleMesh, VerificationResult } from "./types";
+import { TRAY_ENTRY_RADIAL_FLARE } from "./settings";
 
 export type BuildConfiguration = {
   /** Skip STL/STEP serialization for the low-latency editor preview. */
@@ -74,7 +75,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   tray = tray.fuse(rim);
   for (const x of d.screwXs) for (const y of d.screwYs) {
     tray = tray.cut(cylinder(x, y, d.joinZ - 0.1, d.drop / 2, d.deckThickness + 0.2));
-    tray = tray.cut(cone(x, y, d.deckTop - 0.3, d.drop / 2, d.drop / 2 + 0.2, 0.3));
+    tray = tray.cut(cone(x, y, d.deckTop - 0.3, d.drop / 2, d.drop / 2 + TRAY_ENTRY_RADIAL_FLARE, 0.3));
   }
   for (const p of d.joints) {
     tray = tray.cut(cylinder(p.x, p.y, d.joinZ - 0.05, 2.2, 1.5));
