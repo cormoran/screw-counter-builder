@@ -93,3 +93,10 @@ Replicadの公式資料は[ライブラリ利用とWorker内WASM初期化](https
 - Node/VitestでM2・4×2を実生成し、4 STL・組立STEP・寸法JSONを作成した。ReplicadのB-Rep体積と同梱Python STLのメッシュ体積の差はbase +0.00077%、tray −0.00425%、slider +0.00178%、lid +0.00031%。この差にはPython出力側のSTLメッシュ化誤差と目盛り文字の形状差が含まれる。外形寸法も一致。STEPのCADアプリでの再読込、印刷、物理動作は未確認。
 - Node/Vitestでは標準M2・4×10、M1.5・3×3接着、M3・6×3ねじ、M2・1×1ねじも実生成し、幾何チェックとSTEP/STL出力を通過した。Chromeのローカル配布ビルドでも標準M2・4×10を約100秒で生成できた。ブラウザでの性能は端末依存なので、公開後の対応範囲は追加測定が必要。
 - 目盛り数字にはフォントファイルに依存しない形状を使用している。Python版と完全に同一の文字輪郭ではない。今後モデルを変更する際は、`settings.ts` の入力制約、`derive.ts` の派生寸法、`replicad.ts` の形状、`settings-schema.ts` のUIメタデータ、比較テストを一緒に更新する。
+
+## 2026-09-22 の追加設計
+
+- プレビューを主画面の左に広く置き、設定を右サイドパネルにした。完成／分離の切替、分離距離、パン、回転、ズームを操作できる。OrbitControls のダンピングは無効。
+- `screwSpaceHeight` はトレーのデッキ上面から閉じたふたの内側までの高さ。ふたの突出部1.2 mmを加えて外形上端を計算する。既定5.6 mmで従来の外形上端14 mmを維持し、3.5〜30 mmの入力を許可する。この設定は `Settings`、入力スキーマ、派生寸法、CAD形状へ通す。
+- 標準M2・4×10の組立座標メッシュを事前生成し、静的アセットとして配布する。`npm run generate:default-preview` で更新。現在の合計は生データ1.43 MB、gzip換算0.33 MB。回線情報APIで省データ・cellular等を検出した場合、1 MB超の初回取得前に確認する。動的プレビューはWeb Workerで出力・詳細幾何検証を省き、古い設定の生成を中断する。ダウンロード可能なCADファイルには従来の検証を実行する。
+- Bambu Studio向けにCore 3MFを生成する。4部品を印刷向きにして256×256 mmプレートへ8 mm以上の間隔で配置し、プレートに収まらない設定はエラーにする。Bambu Studio CLIで4×2の実生成ファイルを再読込し、4部品・manifoldを確認した。機種、ノズル、フィラメント、印刷条件が不明なためスライス済みG-codeは含めず、Bambu Studioで設定してからスライスする。[Bambu Studio CLI](https://github.com/bambulab/BambuStudio/wiki/Command-Line-Usage)、[3MF処理実装](https://github.com/bambulab/BambuStudio/blob/master/src/libslic3r/Format/bbs_3mf.cpp)。

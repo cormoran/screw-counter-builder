@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { generateModel } from "../src/cad/generate";
+import { createBambu3mf } from "../src/print3mf";
 
 // Vite turns ?url into a browser URL. Use the installed WASM path for this
 // Node/Vitest integration probe; production code keeps the Vite asset URL.
@@ -42,6 +43,7 @@ describe("browser CAD integration", () => {
     { rows: 3, columns: 3, screw: "M1.5" as const, joint: "glue" as const },
     { rows: 6, columns: 3, screw: "M3" as const, joint: "screws" as const },
     { rows: 1, columns: 1, screw: "M2" as const, joint: "screws" as const },
+    { rows: 4, columns: 2, screw: "M2" as const, joint: "screws" as const, screwSpaceHeight: 10 },
   ])("generates the $screw $rows x $columns $joint validation case", async (settings) => {
     const model = await generateModel(settings);
     expect(model.verification.completed).toContain("Release, retention, and shaft clearance checked at representative stations");
@@ -49,5 +51,11 @@ describe("browser CAD integration", () => {
     expect(model.files["assembly.step"].size).toBeGreaterThan(0);
     expect(model.dimensions.screwXs).toHaveLength(settings.columns);
     expect(model.dimensions.screwYs).toHaveLength(settings.rows);
+    if (settings.columns === 10) {
+      const print = await createBambu3mf(model);
+      expect(print.placements).toHaveLength(4);
+      expect(print.file.size).toBeGreaterThan(100_000);
+    }
+    if ('screwSpaceHeight' in settings) expect(model.dimensions.top - model.dimensions.deckTop - 1.2).toBeCloseTo(settings.screwSpaceHeight);
   }, 120_000);
 });

@@ -14,6 +14,8 @@ export interface Settings {
   magnetDiameterClearance: number;
   magnetDepthClearance: number;
   slideClearance: number;
+  /** Free vertical space above the tray deck, below the lid lip, in mm. */
+  screwSpaceHeight: number;
   /** Measured maximum head diameter. `null` uses the screw preset. */
   headDiameter: number | null;
   shaftDiameter: number | null;
@@ -71,6 +73,7 @@ export interface DerivedDimensions {
   sliderThickness: number;
   joinZ: number;
   deckTop: number;
+  screwSpaceHeight: number;
   top: number;
   detent?: DetentDimensions;
   joints: Point2D[];
@@ -121,6 +124,12 @@ export interface GeneratedModel {
   verification: VerificationResult;
   diagnostics: Record<ModelPart, PartDiagnostic>;
   /** Display mesh per part. UI transforms these for assembled/exploded views. */
+  partMeshes: Record<ModelPart, TriangleMesh>;
+}
+
+/** Geometry returned while editing settings. It deliberately has no export files. */
+export interface PreviewModel {
+  dimensions: DerivedDimensions;
   partMeshes: Record<ModelPart, TriangleMesh>;
 }
 

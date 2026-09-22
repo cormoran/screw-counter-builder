@@ -26,14 +26,15 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
   const sliderThickness = 2;
   const joinZ = sliderZ + sliderThickness + c.slideClearance;
   const deckTop = joinZ + 3;
-  const top = Math.max(14, deckTop + 6.8);
+  // The lid lip projects 1.2 mm below the mating plane.
+  const top = deckTop + c.screwSpaceHeight + 1.2;
   const jointXs = [Math.min(18, length / 2 - 4), Math.max(length - 18, length / 2 + 4)];
   const joints = jointXs.flatMap((x) => [wall / 2, width - wall / 2].map((y) => ({ x, y })));
   const magnetCenter = rim / 2 + 0.5;
   const magnets = [magnetCenter, length - magnetCenter].flatMap((x) => [magnetCenter, width - magnetCenter].map((y) => ({ x, y })));
   const result: DerivedDimensions = {
     shaft, head, slot, drop, window, pitch, rim, wall, sliderInsetY, releaseX,
-    screwXs, screwYs, length, width, floor, sliderZ, sliderThickness, joinZ, deckTop, top,
+    screwXs, screwYs, length, width, floor, sliderZ, sliderThickness, joinZ, deckTop, screwSpaceHeight: c.screwSpaceHeight, top,
     joints, magnets,
     magnetPocketDiameter: c.magnetDiameter + c.magnetDiameterClearance,
     magnetPocketDepth: c.magnetThickness + c.magnetDepthClearance,

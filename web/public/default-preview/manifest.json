@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "settings": {
+    "detent": true,
+    "detentSpringWidth": 1.2,
+    "rows": 4,
+    "columns": 10,
+    "screw": "M2",
+    "joint": "screws",
+    "magnetDiameter": 6,
+    "magnetThickness": 2,
+    "magnetDiameterClearance": 0.3,
+    "magnetDepthClearance": 0.15,
+    "slideClearance": 0.3,
+    "screwSpaceHeight": 5.6,
+    "headDiameter": null,
+    "shaftDiameter": null,
+    "slotWidth": null,
+    "pitch": null
+  },
+  "files": {
+    "base": "base.mesh",
+    "tray": "tray.mesh",
+    "slider": "slider.mesh",
+    "lid": "lid.mesh"
+  },
+  "rawBytes": 1429752,
+  "gzipBytes": 332811
+}
