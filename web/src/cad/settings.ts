@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   magnetDiameterClearance: 0.3,
   magnetDepthClearance: 0.15,
   slideClearance: 0.3,
+  screwSpaceHeight: 5.6,
   headDiameter: null,
   shaftDiameter: null,
   slotWidth: null,
@@ -45,13 +46,14 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   if (settings.magnetDiameter < 3 || settings.magnetDiameter > 8) errors.push("Supported magnet diameter is 3..8 mm");
   if (settings.magnetThickness < 1 || settings.magnetThickness > 3) errors.push("Supported magnet thickness is 1..3 mm");
   if (settings.slideClearance < 0.15 || settings.slideClearance > 0.6) errors.push("slideClearance must be 0.15..0.6 mm");
+  if (settings.screwSpaceHeight < 3.5 || settings.screwSpaceHeight > 30) errors.push("screwSpaceHeight must be 3.5..30 mm");
   if (settings.magnetDiameterClearance < 0 || settings.magnetDiameterClearance > 0.6 || settings.magnetDepthClearance < 0 || settings.magnetDepthClearance > 0.3) {
     errors.push("Magnet clearance is outside the supported range");
   }
   if (settings.detentSpringWidth < 1 || settings.detentSpringWidth > 1.5) errors.push("detentSpringWidth must be 1.0..1.5 mm");
   if (!preset) return errors;
   const numericValues = [
-    settings.magnetDiameter, settings.magnetThickness, settings.magnetDiameterClearance,
+    settings.screwSpaceHeight, settings.magnetDiameter, settings.magnetThickness, settings.magnetDiameterClearance,
     settings.magnetDepthClearance, settings.slideClearance, settings.detentSpringWidth,
     settings.headDiameter, settings.shaftDiameter, settings.slotWidth, settings.pitch,
   ];

@@ -1,6 +1,6 @@
 import { deriveDimensions } from "./derive";
 import { assertValidSettings } from "./settings";
-import type { GenerateOptions, GeneratedFileName, GeneratedModel, SettingsInput } from "./types";
+import type { GenerateOptions, GeneratedFileName, GeneratedModel, PreviewModel, SettingsInput } from "./types";
 
 const EXPECTED_FILES: readonly GeneratedFileName[] = [
   "base.stl", "tray.stl", "slider.stl", "lid.stl", "assembly.step", "dimensions.json",
@@ -8,6 +8,25 @@ const EXPECTED_FILES: readonly GeneratedFileName[] = [
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("CAD generation was cancelled", "AbortError");
+}
+
+/**
+ * Generates only viewport triangles. This avoids STEP/STL serialization and
+ * the exhaustive boolean checks used for downloadable production files.
+ */
+export async function generatePreviewModel(input: SettingsInput = {}, options: GenerateOptions = {}): Promise<PreviewModel> {
+  const settings = assertValidSettings(input);
+  const dimensions = deriveDimensions(settings);
+  throwIfAborted(options.signal);
+  options.onProgress?.({ phase: "initializing", message: "Loading the CAD engine…" });
+  const { buildWithReplicad } = await import("./replicad");
+  const result = await buildWithReplicad(settings, dimensions, options, {
+    includeExports: false,
+    validate: false,
+    meshTolerance: 0.22,
+  });
+  throwIfAborted(options.signal);
+  return { dimensions, partMeshes: result.partMeshes };
 }
 
 /**

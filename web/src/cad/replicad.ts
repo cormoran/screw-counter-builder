@@ -4,6 +4,15 @@ import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC,
 import type { Shape3D } from "replicad";
 import type { DerivedDimensions, GenerateOptions, GeneratedFileName, PartDiagnostic, Settings, TriangleMesh, VerificationResult } from "./types";
 
+export type BuildConfiguration = {
+  /** Skip STL/STEP serialization for the low-latency editor preview. */
+  includeExports?: boolean;
+  /** Skip expensive boolean intersection checks while a setting is being edited. */
+  validate?: boolean;
+  /** A coarser tessellation is sufficient for an interactive viewport. */
+  meshTolerance?: number;
+};
+
 let kernel: Promise<void> | undefined;
 const ready = () => (kernel ??= initOpenCascade({ locateFile: () => openCascadeWasm }).then(setOC));
 const box = (x: number, y: number, z: number, dx: number, dy: number, dz: number): Shape3D => makeBox([x, y, z], [x + dx, y + dy, z + dz]);
@@ -38,7 +47,7 @@ const printOrientation = (shape: Shape3D): Shape3D => {
 };
 
 /** OpenCascade B-Rep port of `design_screw_counter.py`'s `build()`. */
-export async function buildWithReplicad(settings: Settings, d: DerivedDimensions, options: GenerateOptions): Promise<{ files: Partial<Record<GeneratedFileName, Blob>>; warnings: string[]; verification: VerificationResult; diagnostics: Record<"base" | "tray" | "slider" | "lid", PartDiagnostic>; partMeshes: Record<"base" | "tray" | "slider" | "lid", TriangleMesh> }> {
+export async function buildWithReplicad(settings: Settings, d: DerivedDimensions, options: GenerateOptions, configuration: BuildConfiguration = {}): Promise<{ files: Partial<Record<GeneratedFileName, Blob>>; warnings: string[]; verification: VerificationResult; diagnostics: Record<"base" | "tray" | "slider" | "lid", PartDiagnostic>; partMeshes: Record<"base" | "tray" | "slider" | "lid", TriangleMesh> }> {
   await ready();
   const aborted = () => { if (options.signal?.aborted) throw new DOMException("CAD generation was cancelled", "AbortError"); };
   aborted();
@@ -92,6 +101,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   aborted();
   const parts = { base, tray, slider, lid };
   const completed: string[] = [];
+  if (configuration.validate !== false) {
   if (Object.values(parts).every((part) => !part.isNull && part.solids.length === 1)) completed.push("4 valid single solids");
   else throw new Error("CAD build produced a null or multi-solid part");
   const names = Object.keys(parts) as Array<keyof typeof parts>;
@@ -138,21 +148,25 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     if (d.detent.reliefGap <= d.detent.maxLateralDeflection + 0.2) throw new Error("Detent relief gap is too narrow");
     completed.push("Detent inter-station clearance verified");
   }
+  } else {
+    completed.push("Interactive preview geometry generated; export validation deferred");
+  }
   const diagnostics = Object.fromEntries(Object.entries(parts).map(([name, part]) => {
     const [min, max] = part.boundingBox.bounds;
     return [name, { volume: measureShapeVolumeProperties(part).volume, bounds: { min, max } }];
   })) as Record<"base" | "tray" | "slider" | "lid", PartDiagnostic>;
   const partMeshes = Object.fromEntries(Object.entries(parts).map(([name, part]) => {
-    const mesh = part.mesh({ tolerance: 0.08, angularTolerance: 0.2 });
+    const mesh = part.mesh({ tolerance: configuration.meshTolerance ?? 0.08, angularTolerance: 0.2 });
     return [name, {
       positions: Float32Array.from(mesh.vertices),
       normals: Float32Array.from(mesh.normals),
       indices: Uint32Array.from(mesh.triangles),
     }];
   })) as Record<"base" | "tray" | "slider" | "lid", TriangleMesh>;
-  return { files: {
+  const files: Partial<Record<GeneratedFileName, Blob>> = configuration.includeExports === false ? {} : {
     "base.stl": printOrientation(base.clone()).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }), "tray.stl": printOrientation(tray.clone()).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }),
     "slider.stl": printOrientation(slider.clone()).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }), "lid.stl": printOrientation(lid.clone().rotate(180, [0, 0, 0], [1, 0, 0])).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }),
     "assembly.step": exportSTEP([{ shape: base, name: "base" }, { shape: tray, name: "tray" }, { shape: slider, name: "slider" }, { shape: lid, name: "lid" }]),
-  }, warnings: ["Browser CAD output has not been compared against the Python B-Rep baseline or physically print-tested."], verification: { completed, pending: ["Full per-station release and retention checks", "Full Python B-Rep numeric comparison"] }, diagnostics, partMeshes };
+  };
+  return { files, warnings: ["Browser CAD output has not been compared against the Python B-Rep baseline or physically print-tested."], verification: { completed, pending: ["Full per-station release and retention checks", "Full Python B-Rep numeric comparison"] }, diagnostics, partMeshes };
 }

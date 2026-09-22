@@ -22,5 +22,14 @@ describe("Python dimension parity", () => {
   it("rejects non-finite and oversized untrusted inputs", () => {
     expect(validateSettings({ magnetDiameter: Number.NaN })).not.toEqual([]);
     expect(validateSettings({ columns: 25 })).not.toEqual([]);
+    expect(validateSettings({ screwSpaceHeight: 3 })).not.toEqual([]);
+  });
+
+  it("changes the enclosure height while retaining the lid clearance", () => {
+    const standard = deriveDimensions();
+    const taller = deriveDimensions({ screwSpaceHeight: 10 });
+    expect(standard.screwSpaceHeight).toBe(5.6);
+    expect(taller.top - standard.top).toBeCloseTo(4.4);
+    expect(taller.top - taller.deckTop - 1.2).toBeCloseTo(10);
   });
 });

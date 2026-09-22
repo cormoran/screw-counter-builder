@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "generate:default-preview": "vitest run scripts/generate-default-preview.test.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run"
