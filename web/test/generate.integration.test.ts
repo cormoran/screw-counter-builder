@@ -55,6 +55,21 @@ describe("browser CAD integration", () => {
       const print = await createBambu3mf(model);
       expect(print.placements).toHaveLength(4);
       expect(print.file.size).toBeGreaterThan(100_000);
+      const mini = await createBambu3mf(model, { width: 180, depth: 180 });
+      expect(mini.plates.length).toBeGreaterThan(1);
+      expect(mini.plates.flatMap((plate) => plate.placements)).toHaveLength(4);
+      for (const plate of mini.plates) {
+        const minX = Math.min(...plate.placements.map((placement) => placement.x));
+        const maxX = Math.max(...plate.placements.map((placement) => placement.x + placement.width));
+        const minY = Math.min(...plate.placements.map((placement) => placement.y));
+        const maxY = Math.max(...plate.placements.map((placement) => placement.y + placement.depth));
+        expect((minX + maxX) / 2).toBeCloseTo(90, 3);
+        expect((minY + maxY) / 2).toBeCloseTo(90, 3);
+        expect(minX).toBeGreaterThanOrEqual(0);
+        expect(maxX).toBeLessThanOrEqual(180);
+        expect(minY).toBeGreaterThanOrEqual(0);
+        expect(maxY).toBeLessThanOrEqual(180);
+      }
     }
     if ('screwSpaceHeight' in settings) expect(model.dimensions.top - model.dimensions.deckTop - 1.2).toBeCloseTo(settings.screwSpaceHeight);
   }, 120_000);

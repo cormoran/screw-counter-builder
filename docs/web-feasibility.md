@@ -99,4 +99,12 @@ Replicadの公式資料は[ライブラリ利用とWorker内WASM初期化](https
 - プレビューを主画面の左に広く置き、設定を右サイドパネルにした。完成／分離の切替、分離距離、パン、回転、ズームを操作できる。OrbitControls のダンピングは無効。
 - `screwSpaceHeight` はトレーのデッキ上面から閉じたふたの内側までの高さ。ふたの突出部1.2 mmを加えて外形上端を計算する。既定5.6 mmで従来の外形上端14 mmを維持し、3.5〜30 mmの入力を許可する。この設定は `Settings`、入力スキーマ、派生寸法、CAD形状へ通す。
 - 標準M2・4×10の組立座標メッシュを事前生成し、静的アセットとして配布する。`npm run generate:default-preview` で更新。現在の合計は生データ1.43 MB、gzip換算0.33 MB。回線情報APIで省データ・cellular等を検出した場合、1 MB超の初回取得前に確認する。動的プレビューはWeb Workerで出力・詳細幾何検証を省き、古い設定の生成を中断する。ダウンロード可能なCADファイルには従来の検証を実行する。
-- Bambu Studio向けにCore 3MFを生成する。4部品を印刷向きにして256×256 mmプレートへ8 mm以上の間隔で配置し、プレートに収まらない設定はエラーにする。Bambu Studio CLIで4×2の実生成ファイルを再読込し、4部品・manifoldを確認した。機種、ノズル、フィラメント、印刷条件が不明なためスライス済みG-codeは含めず、Bambu Studioで設定してからスライスする。[Bambu Studio CLI](https://github.com/bambulab/BambuStudio/wiki/Command-Line-Usage)、[3MF処理実装](https://github.com/bambulab/BambuStudio/blob/master/src/libslic3r/Format/bbs_3mf.cpp)。
+- 初期実装ではBambu Studio向けにCore 3MFを生成し、4部品を印刷向きにして256×256 mmプレートへ8 mm以上の間隔で配置した。当時はプレートに収まらない設定をエラーにした。Bambu Studio CLIで4×2の実生成ファイルを再読込し、4部品・manifoldを確認した。機種、ノズル、フィラメント、印刷条件が不明なためスライス済みG-codeは含めず、Bambu Studioで設定してからスライスする。[Bambu Studio CLI](https://github.com/bambulab/BambuStudio/wiki/Command-Line-Usage)、[3MF処理実装](https://github.com/bambulab/BambuStudio/blob/master/src/libslic3r/Format/bbs_3mf.cpp)。
+
+## 2026-09-22 のプレート配置拡張
+
+- 詳細設定は基本設定の次に、収納・操作、ねじの実測値、磁石、クリアランスの順で表示する。入力の追加時は `web/src/settings-schema.ts` の `SETTINGS_CATEGORIES` と `SETTINGS_FIELDS` に対応付ける。
+- 印刷プレートは350×320、330×320、256×256（既定）、180×180 mmの4種類を選べる。対応機種の表示と寸法は `PRINT_PLATE_OPTIONS` に集約した。3MF生成APIは `{ width, depth }` を受け取る。
+- STLを印刷向きのまま8 mm間隔で詰める。4部品の並び順を試して使うプレート枚数を抑え、各プレートで部品全体のバウンディングボックスを中央に移す。1枚に収まらなければ分割する。部品単体が指定プレートからはみ出す場合にエラーとする。
+- 複数プレートはBambu Studioの `Metadata/model_settings.config` の `<plate>` と、3MF内の仮想プレート座標に対応付ける。[Bambu Studioの3MF読み書き実装](https://github.com/bambulab/BambuStudio/blob/master/src/libslic3r/Format/bbs_3mf.cpp)を参照。3MFは形状と配置を保存し、機種や材料のスライス設定はBambu Studio上で選択する。
+- Bambu Studio 02.08.02.60 のCLIで180×180 mmの4プレート入り3MFを再読込し、`m_plater_data size 4` と `got plate count 4` を確認した。この確認用3MFのメッシュはテスト用の平面三角形であり、凸包エラーも出るため、スライス可能性の証明ではない。Chromeのローカルサイトでは標準M2・4×10を180×180 mmで生成し、2プレート表示と各プレートの部品切替を確認した。実印刷は未確認。
