@@ -15,6 +15,7 @@ type PreviewState = 'idle' | 'generating' | 'error'
 type PrintState = 'ready' | 'generating' | 'error'
 type PendingTransfer = { label: string; detail: string; action: () => void }
 const ModelViewer = lazy(() => import('./components/ModelViewer').then((module) => ({ default: module.ModelViewer })))
+const buildCommitDate = new Date(__BUILD_COMMIT_DATE__)
 
 const PART_FILES = [
   ['assembly.step', '組立 STEP'],
@@ -316,7 +317,10 @@ export default function App() {
         </section>
       </aside>
     </div>
-    <footer><p>プリセットのねじ寸法は規格保証値ではありません。実物を測定し、印刷条件と実機での動作を確認してください。</p></footer>
+    <footer>
+      <p>プリセットのねじ寸法は規格保証値ではありません。実物を測定し、印刷条件と実機での動作を確認してください。</p>
+      <p className="build-info">バージョン: <code>{__BUILD_COMMIT_HASH__}</code> <span>コミット日時: {formatBuildCommitDate(buildCommitDate)}</span></p>
+    </footer>
     {pendingTransfer && <DataConfirmation pending={pendingTransfer} onCancel={() => setPendingTransfer(null)} onContinue={() => { const action = pendingTransfer.action; setPendingTransfer(null); action() }} />}
   </main>
 }
@@ -379,6 +383,13 @@ function localizeWarning(message: string) {
 
 function fmt(value: number) { return new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 }).format(value) }
 function formatBytes(value: number) { return new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 }).format(value / 1024 / 1024) + ' MB' }
+function formatBuildCommitDate(value: Date) {
+  if (Number.isNaN(value.getTime())) return '不明'
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
+  }).format(value)
+}
 function localizeValidation(message: string) {
   const translations: Record<string, string> = {
     'rows and columns must be positive integers within 12 × 24': '1回に出す本数は1〜12本、取り出し回数は1〜24回の整数にしてください。',
