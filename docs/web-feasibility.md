@@ -1,0 +1,95 @@
+# Web版フィージビリティ調査（2026-09-22）
+
+## 結論と確認レベル
+
+**静的サイト + ブラウザ内WASM CADで4部品の生成を実装し、ChromeとNodeで出力を確認した。** Replicadを採用し、寸法・体積を同梱Python出力と比較した。全停止位置の検査、CADアプリでの再読込、印刷・実機試験は残る。公開環境はGitHub Pagesへの配信後に確認する。
+
+初期調査では既存コードの構造、同梱済み出力、候補ライブラリの公開APIを確認した。その後の実装と測定結果は末尾に追記した。この環境でPython版を再生成していないため、比較基準はリポジトリに同梱された出力である。
+
+## 既存実装から分かる要件
+
+|項目|現状|Web版での扱い|
+|---|---|---|
+|入力|`Settings` に行数、列数、M1.5/M2/M3、接合方法、磁石、摺動隙間、頭径・軸径・溝幅・ピッチ、クリック設定がある|初版UIは行数・列数・対象ネジ・接合方法を基本入力にし、実測頭径・軸径・溝幅・ピッチ、磁石、隙間、クリックを詳細設定に置く。Python CLIにない軸径なども `Settings` の対応範囲として扱う|
+|形状|`design_screw_counter.py` の `dimension()` と `build()` が4部品を作る。カット、結合、フィレット、面取り、円錐、目盛り文字を使用|単純なSTLメッシュの組立では形状とSTEPを同等にしにくい。B-RepのCADカーネルをブラウザで動かす|
+|出力|組立位置のSTEP、印刷姿勢のbase/tray/slider/lid各STL、設定・寸法・検証結果JSON|同じ5 CADファイルとJSONをZIPで一括ダウンロード。各ファイルの個別取得も可能にする。STLとSTEPの座標系を明示する|
+|検証|単一ソリッド・形状有効性・部品間干渉・各停止位置の落下/保持/軸通過・磁石/クリック隙間を検査|単なるブラウザプレビューだけを「検証済み」としない。Python版の比較テストと同等の幾何チェックを移植する。未実装のチェックはJSONに成功として書かない|
+
+標準のM2・4行×10列は既存JSONで本体 **108.3 × 55 × 14 mm**、ピッチ **8 mm**。同梱の標準出力はSTEP約2.6 MiB、4 STL合計約3.2 MiBで、ダウンロード自体は小さい。これはWASM本体の転送量や生成中のメモリ量を示す数値ではない。行数・列数の上限は現行 `dimension()` にないため、Web UIでは性能測定後に上限を定める必要がある。無限大/NaNを含む数値と巨大な個数もUIと生成関数の両方で拒否する。
+
+プリセット頭径は規格保証値ではない。実物のネジ頭を測った値を入力できるようにし、皿頭や薄頭など未対応形状については生成画面に説明を置く。CAD上の成立と実際の印刷・動作は別の確認事項である。
+
+## 技術候補と判断
+
+|案|利点|課題|判断|
+|---|---|---|---|
+|Replicad + OpenCascade WASMをTypeScriptから使用|ブラウザ内B-Rep演算、メッシュ化、STL/STEP出力、文字図形の公開APIがある。既存CadQueryと同系統のCADカーネル|CadQueryのコードはそのまま動かない。フィレットのエッジ指定、組立STEP、検証API、計算時間を移植・実測する必要がある|採用候補。brepjsと同条件で比較|
+|brepjs + occt-wasm|B-Rep、フィレット、ブーリアン演算、STL/STEP、組立、形状計測を公開APIで扱える。occt-wasmはWorkerと明示的なメモリ管理を備える|こちらも全面移植が必要。文字刻印、同等形状、性能を確認する。occt-wasmは新しいWASM機能を要求するため対応ブラウザに注意|採用候補。Replicadと同条件で比較|
+|occt-wasm / OpenCascade.jsを直接使用|必要なOCCT機能を細かく使える。occt-wasmには低レベルの検証・組立APIもある|形状作成の抽象化、エッジ選択、文字処理などを自前で実装する負担が増える。OpenCascade.jsのカスタムビルドは管理対象が増える|上位ライブラリで必要な操作が足りない場合に再評価|
+|Python/CadQueryをサーバーで実行|現行形状・検証を再利用できる|サーバー運用、処理キュー、リソース制限が必要。静的サイトだけでは完結しない|WASM移植が品質・性能で成立しない場合の代替|
+|メッシュ専用CAD/CSG|STLに絞れば選択肢が広い|現行STEPに相当する編集可能なB-Rep出力と形状比較が難しい|初版の要件には選ばない|
+
+Replicadの公式資料は[ライブラリ利用とWorker内WASM初期化](https://replicad.xyz/docs/use-as-a-library/)、[STL/STEPとプレビュー用メッシュのAPI](https://replicad.xyz/docs/api/classes/Shape/)、[文字図形](https://replicad.xyz/docs/api/functions/drawText/)を記載している。[組立STEPのエクスポータ](https://github.com/sgenoud/replicad/blob/main/packages/replicad/src/export/assemblyExporter.ts)もソース上にある。[brepjsの公式README](https://github.com/andymai/brepjs)はB-Rep演算、STEP出力、組立を説明し、[occt-wasmの公式README](https://github.com/andymai/occt-wasm)はSTL/STEP、XCAF組立、Worker、対応ブラウザを説明している。[OpenCascade.jsの公式資料](https://ocjs.org/docs/app-dev-workflow/custom-builds)にはカスタムWASMビルドの手順がある。これらは**機能の存在**の根拠であり、このリポジトリのモデルでの動作保証ではない。OpenJSCADは[公式資料に列挙される出力形式にSTEPがない](https://github.com/jscad/OpenJSCAD.org/blob/master/jsdoc/tutorials/01_gettingStarted.md)ため、現行出力との同等性を優先する初版には選ばない。`occt-import-js` は[STEP等の読み込み・三角形化が主用途](https://github.com/kovacsv/occt-import-js/blob/main/README.md)なので生成エンジンには採用しない。
+
+## 推奨アーキテクチャ
+
+1. Vite + TypeScriptの静的サイトを追加し、GitHub PagesへActionsから配信する。Pagesは[静的アセットとActionsでのビルド成果物配信に対応](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)。リポジトリ名のサブパス配信を想定してbase URLを設定する。
+2. UIでパラメータを入力し、`dimension()` と同じ制約で即時に寸法とエラーを表示する。Python版は比較の基準として維持し、寸法計算のゴールデンケースをTS版と照合する。
+3. 専用Web WorkerでOCCT WASMを一度初期化し、4部品を生成する。計算中のUIを止めず、キャンセル時はWorkerを破棄する。プレビューは生成した形状のメッシュを描く。設定変更時は重い演算を明示的な「生成」操作で開始する。
+4. 形状検証を通った結果だけをダウンロード可能にする。STEPは組立位置、STLは各部品を印刷姿勢に変換して出力。ZIPには設定、派生寸法、実施済みチェック、生成器のバージョンを入れる。失敗時はエラーを表示し、不完全なZIPは提供しない。
+5. 開発時はPython版との比較をCIで行う。配信時にはPythonを必要としない構成にする。ページ本体とWASMのライセンス/配布ファイルを依存確定時に確認する。
+
+## エンジン比較スパイク（2026-09-22）
+
+公開APIと配布条件を再確認し、初版の採用候補をReplicadに絞る判断とした。この時点ではCAD生成を実行しておらず、生成時間・WASM実測値を示すものではない。npm registryは権限付きの実行経路でアクセスできることを後から確認した。
+
+|観点|Replicad|brepjs + occt-wasm|判断|
+|---|---|---|---|
+|現行形状の移植|CadQueryに近いチェーンAPI、`EdgeFinder`による幾何条件のエッジ選択、フィレット/ブーリアン|OCCTの低レベル操作を型付きAPIで扱えるが、形状手順の全面移植が必要|Replicadの移植リスクが低い|
+|文字|`drawText(text, { fontFamily, fontSize })` が公開され、Drawingを押し出し/カットへ渡せる|確認した公開ガイドに文字からB-Repを作る同等ヘルパーはない|目盛り文字があるためReplicad優位|
+|出力|`Shape.blobSTL()`、`Shape.blobSTEP()`、メッシュ取得。CLIには`step-assembly`出力|STL/STEP、XCAF assembly、テッセレーションを低レベルAPIで提供|両方成立。ReplicadのAPIが簡潔|
+|検証|形状トポロジー、体積、BBox等をラッパー越しに取得。必要なOCCT検査は追加実装|形状型、体積、BBox、点分類、healing等を広く提供|検査の深さはbrepjs優位。採用後に不足分をOCCT APIで補う|
+|ブラウザ|WorkerでOpenCascade WASMを初期化する構成。実行時のWASM設定が必要|occt-wasmはWorker対応だが、SIMD・tail calls・例外処理を要求（確認済み最低: Chrome/Edge 114、Safari 17.2、Firefox 121）|対応ブラウザを明記し、非対応時はエラー表示|
+|配布|Replicad本体とOpenCascade WASMのライセンス/サイズ確認が必要|occt-wasm READMEはbrotli約4.5MB、Apache-2.0のbrepjsを記載|実装時にlockfileとライセンスを固定|
+
+### 採用判断
+
+目盛り文字を含む4部品モデルを最短で移植できる可能性を優先し、**初版はReplicad + OpenCascade WASMを採用する**。Replicadのmain packageは現在1.1.0で、対応する`replicad-opencascadejs`も1.1.0として公開されているため、実装開始時はこの組み合わせをlockfileに固定してスパイクする。brepjs + occt-wasmは、Replicadで文字刻印またはAssembly STEPが詰まった場合の代替候補として残す。brepjsは検証・XCAF assemblyのAPIが広いため、Replicadで生成したSTEPを受けて検査する補助利用も将来の選択肢になる。
+
+比較根拠: [Replicad library/Worker初期化](https://replicad.pages.dev/docs/use-as-a-library/)、[Replicad ShapeのSTL/STEP/mesh API](https://replicad.xyz/docs/api/classes/Shape/)、[Replicad drawText](https://replicad.xyz/docs/api/functions/drawText/)、[Replicad CLIのstep-assembly](https://github.com/sgenoud/replicad/blob/main/packages/replicad-cli/README.md)、[brepjs README](https://github.com/andymai/brepjs)、[occt-wasm READMEとブラウザ要件](https://github.com/andymai/occt-wasm/blob/main/README.md)。
+
+### インストール済みReplicad 1.1.0のAPI確認
+
+`web/node_modules/replicad/dist/replicad.d.ts` と実装を確認した。4部品の組立STEPは、各Shapeを `{ shape, name, color, alpha }` にして `exportSTEP(parts, { unit: "MM" })` に渡す。内部でXCAFドキュメントを作成し、`write.step.assembly=2` を設定してBlobを返す。`createAssembly()`も公開されるが、通常はBlobを直接返す`exportSTEP()`が扱いやすい。
+
+文字は `sketchText(text, { fontSize, fontFamily }, { plane, origin })` または `drawText(text, { ... }).sketchOnPlane(...)` の結果を `.extrude(depth)` し、部品を `.cut(textSolid)` する。`sketchText` は複数輪郭を返す `Sketches` であり、複数文字輪郭を一度に押し出せる。
+
+検査は高水準の単一 `isValid` は公開されていないため、`shape.solids.length`、`shape.isNull`、`shape.boundingBox`、`measureVolume(shape)`、`measureDistanceBetween(a, b)` と boolean の `intersect()` 結果を組み合わせる。厳密なOCCT `BRepCheck_Analyzer` は `getOC()` 経由の追加実装が必要で、検証JSONでは未実施チェックを成功扱いしない。
+
+プレビューは `shape.mesh({ tolerance, angularTolerance })` の頂点/法線/三角形をThree.jsへ渡す。部品STLは `shape.blobSTL({ binary: true, tolerance, angularTolerance })`、組立STEPは前記 `exportSTEP()` を使う。`Shape.solids` は検証時のソリッド数取得にも利用できる。
+
+## 最初の実装スパイクと合格条件
+
+1. Replicad系とbrepjs + occt-wasm系の公開API、モデル移植の難度、文字形状、組立STEP、検証手段を比較する。Replicad採用後は実モデルをWorker内で生成し、STL/STEP出力、形状計測、WASMサイズ、生成時間を確認する。iOS Safari相当での初期化は別途確認する。
+2. M2・4×2を**4部品すべて**移植し、印刷姿勢の各STLと組立STEPをブラウザから出力する。難所は縦エッジ/上面エッジのフィレット指定、トレーの多数の穴、文字のくり抜き、ばねとノッチ、蓋の反転とSTEP組立である。最初に文字を省略した形状で演算を通し、その後文字まで含める。
+3. Python版の同設定と外形寸法、部品数、ソリッド有効性、体積、各部品の位置、穴の中心/径を比較する。メッシュのバイト一致は要求しない。受け入れる数値許容差を比較前に決め、差分を記録する。スライダーの各停止位置で保持・落下・干渉を確認する。
+4. 標準M2・4×10、M1.5・3×3・接着、M3・6×3・ネジ、M2・1×1も実行し、全ファイルをCAD/スライサーで開く。デスクトップとスマートフォンで生成時間、ピークメモリ、初回WASM取得量を測る。測定後に入力上限と対応ブラウザを決める。
+
+合格ならサイト本実装に進む。組立STEPや重要なフィレット/文字が再現できない、標準設定で実用的な時間・メモリに収まらない、または検証を同等に移せない場合は、差分と測定値を残してサーバー生成案へ切り替える。サーバー案でもフロントエンドの入力・寸法表示・プレビュー設計は流用できる。
+
+## 残る作業
+
+- [ ] ダウンロードしたSTEP/STLを別のCADアプリとスライサーで再読込し、組立位置と印刷姿勢を確認する。
+- [ ] 複数ブラウザ・スマートフォンで生成時間、メモリ、ダウンロードを測る。現行の入力上限12行×24列は暫定値。
+- [ ] Python版と同じ全停止位置での幾何検査、B-Rep数値比較を必要に応じて追加する。現行ブラウザ版は代表位置を検査し、未実施項目をJSONに記録する。
+- [ ] 印刷・実機動作、クリック力、耐久性を試験版で確認する。
+
+## 実装・検証の追記（2026-09-22）
+
+- `web/` にVite/Reactの静的サイト、設定スキーマ、Web Worker内のReplicad生成、4 STL・組立STEP・寸法JSON・ZIP出力を実装した。WASMはビルド時22.98 MB、gzip時7.32 MB。ブラウザの実際の転送量はホストの圧縮設定に依存する。
+- 生成した4部品のメッシュをWorkerから転送し、Three.jsで完成状態とパーツ分離状態を表示する。Chromeで切替とマウス回転を操作し、390 px幅でも横スクロールが発生しないことを確認した。Three.jsは生成後に遅延読込する。
+- `navigator.connection` が省データ設定、cellular、2g、slow-2gを報告する場合、初回WASM取得前に通信量を示して続行確認を出す。APIがないブラウザでは回線種別を推測しない。STL/ZIPはブラウザ内のBlobを保存するため回線確認の対象外とした。[Network Information API](https://developer.mozilla.org/en-US/docs/Web/API/Network_Information_API)はブラウザによって利用可否が異なる。
+- Chromeのローカル配布ビルドでM2・4×2を入力し、幾何検査後に6ファイルのダウンロード操作が表示されることを確認した。無効な頭径入力ではエラーが表示され生成できない。UIからの保存先への書き込みとダウンロードファイルの再読込は、このブラウザ環境では未確認。
+- Node/VitestでM2・4×2を実生成し、4 STL・組立STEP・寸法JSONを作成した。ReplicadのB-Rep体積と同梱Python STLのメッシュ体積の差はbase +0.00077%、tray −0.00425%、slider +0.00178%、lid +0.00031%。この差にはPython出力側のSTLメッシュ化誤差と目盛り文字の形状差が含まれる。外形寸法も一致。STEPのCADアプリでの再読込、印刷、物理動作は未確認。
+- Node/Vitestでは標準M2・4×10、M1.5・3×3接着、M3・6×3ねじ、M2・1×1ねじも実生成し、幾何チェックとSTEP/STL出力を通過した。Chromeのローカル配布ビルドでも標準M2・4×10を約100秒で生成できた。ブラウザでの性能は端末依存なので、公開後の対応範囲は追加測定が必要。
+- 目盛り数字にはフォントファイルに依存しない形状を使用している。Python版と完全に同一の文字輪郭ではない。今後モデルを変更する際は、`settings.ts` の入力制約、`derive.ts` の派生寸法、`replicad.ts` の形状、`settings-schema.ts` のUIメタデータ、比較テストを一緒に更新する。
