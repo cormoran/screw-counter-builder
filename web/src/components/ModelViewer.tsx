@@ -33,6 +33,15 @@ type Props = {
   cameraState: { current: ViewerCameraState | null }
   printPlateSize?: { width: number; depth: number }
 }
+type DisplayMesh = {
+  id: ModelPart
+  object: THREE.Mesh
+  offset: THREE.Vector3
+  source: TriangleMesh
+}
+type ViewerRuntime = {
+  update: (meshes: Props['meshes'], printPlateSize?: Props['printPlateSize']) => void
+}
 
 const PARTS: readonly { id: ModelPart; label: string; color: number; offset: [number, number, number] }[] = [
   { id: 'base', label: 'ベース', color: 0x64748b, offset: [-8, -7, -4] },
@@ -49,10 +58,13 @@ export function ModelViewer({ meshes, dimensions = null, mode, cameraState, prin
   const modeRef = useRef(mode)
   const separationRef = useRef(separation)
   const visiblePartsRef = useRef(visibleParts)
+  const printPlateSizeRef = useRef(printPlateSize)
+  const runtime = useRef<ViewerRuntime | null>(null)
   const show3d = mode !== '2d' || Boolean(printPlateSize)
   modeRef.current = mode
   separationRef.current = separation
   visiblePartsRef.current = visibleParts
+  printPlateSizeRef.current = printPlateSize
 
   const togglePart = (part: ModelPart) => {
     setVisibleParts((current) => ({ ...current, [part]: current[part] === false }))
@@ -86,57 +98,105 @@ export function ModelViewer({ meshes, dimensions = null, mode, cameraState, prin
     scene.add(key)
 
     const group = new THREE.Group()
-    const displayMeshes: { id: ModelPart; object: THREE.Mesh; offset: THREE.Vector3 }[] = []
-    const bounds = new THREE.Box3()
+    const displayMeshes = new Map<ModelPart, DisplayMesh>()
     let plate: THREE.Mesh | undefined
-    if (printPlateSize) {
-      const geometry = new THREE.BoxGeometry(printPlateSize.width, printPlateSize.depth, 0.8)
-      const material = new THREE.MeshStandardMaterial({ color: 0xe5e9ef, roughness: 0.95, metalness: 0.02 })
-      plate = new THREE.Mesh(geometry, material)
-      plate.position.set(printPlateSize.width / 2, printPlateSize.depth / 2, -1)
-      group.add(plate)
-      bounds.expandByPoint(new THREE.Vector3(0, 0, -1.4))
-      bounds.expandByPoint(new THREE.Vector3(printPlateSize.width, printPlateSize.depth, 0))
-    }
-    PARTS.forEach((part) => {
-      const mesh = meshes[part.id]
-      if (!mesh) return
+    let plateSize: Props['printPlateSize']
+    let sceneSize = 80
+    let positioned = false
+    const createGeometry = (mesh: TriangleMesh) => {
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3))
       geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 3))
       geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1))
       geometry.computeBoundingBox()
-      bounds.union(geometry.boundingBox!)
-      const object = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: part.color, roughness: 0.62, metalness: 0.05 }))
-      group.add(object)
-      displayMeshes.push({ id: part.id, object, offset: new THREE.Vector3(...part.offset) })
-    })
-    const center = bounds.getCenter(new THREE.Vector3())
-    group.position.copy(center).multiplyScalar(-1)
-    scene.add(group)
-    const size = bounds.getSize(new THREE.Vector3()).length() || 80
-    if (!printPlateSize && !cameraState.current) cameraState.current = loadCamera()
-    const prior = cameraState.current
-    if (prior && prior.sceneSize > 0) {
-      const scale = size / prior.sceneSize
-      camera.position.fromArray(prior.position).multiplyScalar(scale)
-      controls.target.fromArray(prior.target).multiplyScalar(scale)
-      camera.zoom = prior.zoom
-      camera.updateProjectionMatrix()
-    } else {
-      if (printPlateSize) camera.position.set(size * 0.42, -size * 0.52, size * 0.9)
-      else camera.position.set(size * 0.7, -size * 0.85, size * 0.65)
-      controls.target.set(0, 0, 0)
+      return geometry
     }
-    controls.update()
+    const update = (nextMeshes: Props['meshes'], nextPlateSize?: Props['printPlateSize']) => {
+      const bounds = new THREE.Box3()
+      if (nextPlateSize) {
+        if (!plate) {
+          plate = new THREE.Mesh(new THREE.BoxGeometry(nextPlateSize.width, nextPlateSize.depth, 0.8), new THREE.MeshStandardMaterial({ color: 0xe5e9ef, roughness: 0.95, metalness: 0.02 }))
+          group.add(plate)
+        } else if (!plateSize || plateSize.width !== nextPlateSize.width || plateSize.depth !== nextPlateSize.depth) {
+          plate.geometry.dispose()
+          plate.geometry = new THREE.BoxGeometry(nextPlateSize.width, nextPlateSize.depth, 0.8)
+        }
+        plate.position.set(nextPlateSize.width / 2, nextPlateSize.depth / 2, -1)
+        bounds.expandByPoint(new THREE.Vector3(0, 0, -1.4))
+        bounds.expandByPoint(new THREE.Vector3(nextPlateSize.width, nextPlateSize.depth, 0))
+      } else if (plate) {
+        group.remove(plate)
+        plate.geometry.dispose()
+        ;(plate.material as THREE.Material).dispose()
+        plate = undefined
+      }
+      plateSize = nextPlateSize
+
+      PARTS.forEach((part) => {
+        const mesh = nextMeshes[part.id]
+        const existing = displayMeshes.get(part.id)
+        if (!mesh) {
+          if (existing) {
+            group.remove(existing.object)
+            existing.object.geometry.dispose()
+            ;(existing.object.material as THREE.Material).dispose()
+            displayMeshes.delete(part.id)
+          }
+          return
+        }
+        if (existing) {
+          if (existing.source !== mesh) {
+            const geometry = createGeometry(mesh)
+            existing.object.geometry.dispose()
+            existing.object.geometry = geometry
+            existing.source = mesh
+          }
+          return
+        }
+        const object = new THREE.Mesh(createGeometry(mesh), new THREE.MeshStandardMaterial({ color: part.color, roughness: 0.62, metalness: 0.05 }))
+        group.add(object)
+        displayMeshes.set(part.id, { id: part.id, object, offset: new THREE.Vector3(...part.offset), source: mesh })
+      })
+      displayMeshes.forEach(({ object }) => {
+        if (!object.geometry.boundingBox) object.geometry.computeBoundingBox()
+        bounds.union(object.geometry.boundingBox!)
+      })
+      const center = bounds.isEmpty() ? new THREE.Vector3() : bounds.getCenter(new THREE.Vector3())
+      group.position.copy(center).multiplyScalar(-1)
+      const size = bounds.isEmpty() ? 80 : bounds.getSize(new THREE.Vector3()).length() || 80
+      if (!positioned) {
+        if (!nextPlateSize && !cameraState.current) cameraState.current = loadCamera()
+        const prior = cameraState.current
+        if (prior && prior.sceneSize > 0) {
+          const scale = size / prior.sceneSize
+          camera.position.fromArray(prior.position).multiplyScalar(scale)
+          controls.target.fromArray(prior.target).multiplyScalar(scale)
+          camera.zoom = prior.zoom
+          camera.updateProjectionMatrix()
+        } else {
+          if (nextPlateSize) camera.position.set(size * 0.42, -size * 0.52, size * 0.9)
+          else camera.position.set(size * 0.7, -size * 0.85, size * 0.65)
+          controls.target.set(0, 0, 0)
+        }
+        positioned = true
+      } else if (sceneSize > 0) {
+        const scale = size / sceneSize
+        camera.position.multiplyScalar(scale)
+        controls.target.multiplyScalar(scale)
+        camera.updateProjectionMatrix()
+      }
+      sceneSize = size
+      controls.update()
+    }
+    scene.add(group)
     const saveCamera = () => {
       cameraState.current = {
         position: camera.position.toArray() as [number, number, number],
         target: controls.target.toArray() as [number, number, number],
         zoom: camera.zoom,
-        sceneSize: size,
+        sceneSize,
       }
-      if (!printPlateSize) storeCamera(cameraState.current)
+      if (!printPlateSizeRef.current) storeCamera(cameraState.current)
     }
     controls.addEventListener('end', saveCamera)
 
@@ -158,21 +218,21 @@ export function ModelViewer({ meshes, dimensions = null, mode, cameraState, prin
       const rect = renderer.domElement.getBoundingClientRect()
       pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1)
       raycaster.setFromCamera(pointer, camera)
-      const hit = raycaster.intersectObjects(displayMeshes.filter(({ object }) => object.visible).map(({ object }) => object), false)[0]
+      if (printPlateSizeRef.current) return
+      const hit = raycaster.intersectObjects([...displayMeshes.values()].filter(({ object }) => object.visible).map(({ object }) => object), false)[0]
       if (!hit) return
-      const part = displayMeshes.find(({ object }) => object === hit.object)
+      const part = [...displayMeshes.values()].find(({ object }) => object === hit.object)
       if (part) togglePart(part.id)
     }
-    if (!printPlateSize) {
-      renderer.domElement.addEventListener('pointerdown', onPointerDown)
-      renderer.domElement.addEventListener('click', onClick)
-    }
+    renderer.domElement.addEventListener('pointerdown', onPointerDown)
+    renderer.domElement.addEventListener('click', onClick)
+    runtime.current = { update }
     let frame = 0
     const render = () => {
-      const factor = !printPlateSize && modeRef.current === 'exploded' ? separationRef.current / 100 : 0
+      const factor = !printPlateSizeRef.current && modeRef.current === 'exploded' ? separationRef.current / 100 : 0
       displayMeshes.forEach(({ id, object, offset }) => {
         object.position.copy(offset).multiplyScalar(factor * 0.9)
-        object.visible = Boolean(printPlateSize) || visiblePartsRef.current[id] !== false
+        object.visible = Boolean(printPlateSizeRef.current) || visiblePartsRef.current[id] !== false
       })
       const zoom = 1 / (1 + factor * 0.4)
       if (camera.zoom !== zoom) {
@@ -188,17 +248,20 @@ export function ModelViewer({ meshes, dimensions = null, mode, cameraState, prin
       saveCamera()
       cancelAnimationFrame(frame)
       observer.disconnect()
-      if (!printPlateSize) {
-        renderer.domElement.removeEventListener('pointerdown', onPointerDown)
-        renderer.domElement.removeEventListener('click', onClick)
-      }
+      if (runtime.current?.update === update) runtime.current = null
+      renderer.domElement.removeEventListener('pointerdown', onPointerDown)
+      renderer.domElement.removeEventListener('click', onClick)
       controls.dispose()
       displayMeshes.forEach(({ object }) => { object.geometry.dispose(); (object.material as THREE.Material).dispose() })
       if (plate) { plate.geometry.dispose(); (plate.material as THREE.Material).dispose() }
       renderer.dispose()
       renderer.domElement.remove()
     }
-  }, [meshes, printPlateSize?.width, printPlateSize?.depth, show3d, cameraState])
+  }, [show3d, cameraState])
+
+  useEffect(() => {
+    runtime.current?.update(meshes, printPlateSize)
+  }, [meshes, printPlateSize?.width, printPlateSize?.depth])
 
   return <div className="model-viewer">
     {!printPlateSize && mode !== '2d' && <label className="separation-control">

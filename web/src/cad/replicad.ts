@@ -31,6 +31,21 @@ const gussetXZ = (points: Array<[number, number]>, y: number, width: number): Sh
   return sketch.close().extrude(-width);
 };
 
+type CachedCadPart = { key: string; shape: Shape3D; mesh: TriangleMesh; meshTolerance: number; diagnostic: PartDiagnostic; stl?: Blob };
+const partCache: Partial<Record<"base" | "tray" | "slider" | "lid", CachedCadPart>> = {};
+
+// Keep each key limited to the dimensions read while constructing that part.
+// A new geometry dependency must be added here when a part is edited.
+export function partKeys(settings: Settings, d: DerivedDimensions) {
+  return {
+    base: JSON.stringify([d.length, d.width, d.joinZ, d.wall, d.floor, d.joints,
+      d.detent ? [d.detent.tipY, d.detent.notchX, d.detent.notchRadius] : null, settings.joint]),
+    tray: JSON.stringify([d.length, d.width, d.joinZ, d.deckThickness, d.deckTop, d.top, d.sliderInsetY, d.screwXs, d.screwYs, d.drop, d.joints, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.joint]),
+    slider: JSON.stringify([d.width, d.sliderInsetY, d.sliderZ, d.length, d.sliderThickness, d.releaseX, d.window, d.slot, d.screwXs, d.screwYs, d.detent]),
+    lid: JSON.stringify([d.top, d.length, d.width, d.rim, d.deckTop, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth]),
+  };
+}
+
 const printOrientation = (shape: Shape3D): Shape3D => {
   const [min] = shape.boundingBox.bounds;
   return shape.translate(-min[0], -min[1], -min[2]);
@@ -41,24 +56,33 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   await ready();
   const aborted = () => { if (options.signal?.aborted) throw new DOMException("CAD generation was cancelled", "AbortError"); };
   aborted();
-  let base = rounded(0, 0, 0, d.length, d.width, d.joinZ, 4)
-    .cut(box(7.7, d.wall, d.floor, d.length, d.width - 2 * d.wall, d.joinZ + 1))
-    .cut(box(7.7, d.wall + 3, -0.1, d.length, d.width - 2 * (d.wall + 3), d.joinZ + 1));
-  for (const p of d.joints) {
-    // Keep 0.6 mm of material around the R1.2 through-hole at the narrow end.
-    // The land narrows by 1.2 mm over its 1.2 mm height, so its exterior is a
-    // 45-degree face that prints without support and matches the tray socket.
-    base = base.fuse(cone(p.x, p.y, d.joinZ, 3, 1.8, 1.2));
-    if (settings.joint === "screws") {
-      // Preserve the flat 2.3 mm-deep seat for an M2 head. Above it, a 1.1 mm
-      // radial reduction over 1.1 mm of height makes a 45-degree printable roof.
-      base = base.cut(cylinder(p.x, p.y, -0.1, 1.2, d.joinZ + 1.5))
-        .cut(cylinder(p.x, p.y, -0.1, 2.3, 2.4))
-        .cut(cone(p.x, p.y, 2.3, 2.3, 1.2, 1.1));
+  const keys = partKeys(settings, d);
+  const reusable = <P extends keyof typeof keys>(part: P) => partCache[part]?.key === keys[part] ? partCache[part] : undefined;
+  let base = reusable("base")?.shape;
+  if (!base) {
+    base = rounded(0, 0, 0, d.length, d.width, d.joinZ, 4)
+      .cut(box(7.7, d.wall, d.floor, d.length, d.width - 2 * d.wall, d.joinZ + 1))
+      .cut(box(7.7, d.wall + 3, -0.1, d.length, d.width - 2 * (d.wall + 3), d.joinZ + 1));
+    for (const p of d.joints) {
+      // Keep 0.6 mm of material around the R1.2 through-hole at the narrow end.
+      // The land narrows by 1.2 mm over its 1.2 mm height, so its exterior is a
+      // 45-degree face that prints without support and matches the tray socket.
+      base = base.fuse(cone(p.x, p.y, d.joinZ, 3, 1.8, 1.2));
+      if (settings.joint === "screws") {
+        // Preserve the flat 2.3 mm-deep seat for an M2 head. Above it, a 1.1 mm
+        // radial reduction over 1.1 mm of height makes a 45-degree printable roof.
+        base = base.cut(cylinder(p.x, p.y, -0.1, 1.2, d.joinZ + 1.5))
+          .cut(cylinder(p.x, p.y, -0.1, 2.3, 2.4))
+          .cut(cone(p.x, p.y, 2.3, 2.3, 1.2, 1.1));
+      }
+    }
+    if (d.detent) {
+      // The notch stops above the floor and never perforates the underside.
+      for (const x of d.detent.notchX) base = base.cut(cylinder(x, d.detent.tipY, d.floor, d.detent.notchRadius, d.joinZ - d.floor + 0.1));
     }
   }
   options.onProgress?.({ phase: "building", completed: 1, total: 4, message: "Built base" });
-  let tray = rounded(0, 0, d.joinZ, d.length, d.width, d.deckThickness, 4);
+  let tray = reusable("tray")?.shape;
   const frameWall = 2.4;
   // This ring shares the slider grip's XY opening. With the slider fully
   // inserted, a hook can pass through both openings while their separate Z
@@ -74,78 +98,82 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const handleExtraThickness = 0.8;
   const drainY = d.width / 2 - 6;
   const drainWidth = 12;
-  let rim = rounded(0, 0, d.deckTop, d.length, d.width, d.top - d.deckTop, 4)
-    .cut(rounded(frameWall, frameWall, d.deckTop - 0.1, d.length - 2 * frameWall, d.width - 2 * frameWall, d.top - d.deckTop + 0.2, 1.6));
-  // One reinforced corner carries each magnet above its assembly screw.
-  for (const p of d.magnets) rim = rim.fuse(cylinder(p.x, p.y, d.deckTop, d.magnetPocketDiameter / 2 + 1.3, d.top - d.deckTop));
-  tray = tray.fuse(rim);
-  tray = tray
-    .fuse(rounded(storageHandleX, storageHandleY, d.joinZ, storageHandleLength, storageHandleWidth, d.deckThickness + handleExtraThickness, 3))
-    .cut(rounded(storageHandleOpeningX, storageHandleOpeningY, d.joinZ - 0.1, storageHandleOpeningLength, storageHandleOpeningWidth, d.deckThickness + handleExtraThickness + 0.2, 2))
-    // Open only the upper rim: the continuous deck remains the runway that
-    // guides a screw to the front discharge opening.
-    .cut(box(-0.1, drainY, d.deckTop - 0.1, frameWall + 0.2, drainWidth, d.top - d.deckTop + 0.2));
-  // Two short ribs carry the hanging load from the handle into the tray's
-  // rear wall. Stop before the hook opening, and leave its middle unobstructed.
   const handleRibRootX = storageHandleX - 0.4;
   const handleRibRun = 3.2;
   const handleRibBaseZ = d.deckTop + handleExtraThickness;
   const handleRibWidth = 3;
   const handleRibYs = [storageHandleY + 1, storageHandleY + storageHandleWidth - handleRibWidth - 1];
-  for (const ribY of handleRibYs) {
-    tray = tray.fuse(gussetXZ([
-      [handleRibRootX, handleRibBaseZ],
-      [handleRibRootX, handleRibBaseZ + handleRibRun],
-      [handleRibRootX + handleRibRun, handleRibBaseZ],
-    ], ribY, handleRibWidth));
-  }
-  for (const x of d.screwXs) for (const y of d.screwYs) {
-    tray = tray.cut(cylinder(x, y, d.joinZ - 0.1, d.drop / 2, d.deckThickness + 0.2));
-    tray = tray.cut(cone(x, y, d.deckTop - 0.3, d.drop / 2, d.drop / 2 + TRAY_ENTRY_RADIAL_FLARE, 0.3));
-  }
-  for (const p of d.joints) {
-    // Start 0.2 mm wider than the tapered base land at the mating plane. The
-    // 45-degree socket reaches the R0.85 pilot continuously, leaving no flat
-    // inner ceiling that would need bridging or support below the tray deck.
-    tray = tray.cut(cone(p.x, p.y, d.joinZ - 0.05, 3.25, 0.85, 2.4));
-    if (settings.joint === "screws") tray = tray.cut(cylinder(p.x, p.y, d.joinZ + 1.4, 0.85, 2));
+  if (!tray) {
+    tray = rounded(0, 0, d.joinZ, d.length, d.width, d.deckThickness, 4);
+    let rim = rounded(0, 0, d.deckTop, d.length, d.width, d.top - d.deckTop, 4)
+      .cut(rounded(frameWall, frameWall, d.deckTop - 0.1, d.length - 2 * frameWall, d.width - 2 * frameWall, d.top - d.deckTop + 0.2, 1.6));
+    // One reinforced corner carries each magnet above its assembly screw.
+    for (const p of d.magnets) rim = rim.fuse(cylinder(p.x, p.y, d.deckTop, d.magnetPocketDiameter / 2 + 1.3, d.top - d.deckTop));
+    tray = tray.fuse(rim);
+    tray = tray
+      .fuse(rounded(storageHandleX, storageHandleY, d.joinZ, storageHandleLength, storageHandleWidth, d.deckThickness + handleExtraThickness, 3))
+      .cut(rounded(storageHandleOpeningX, storageHandleOpeningY, d.joinZ - 0.1, storageHandleOpeningLength, storageHandleOpeningWidth, d.deckThickness + handleExtraThickness + 0.2, 2))
+      // Open only the upper rim: the continuous deck remains the runway that
+      // guides a screw to the front discharge opening.
+      .cut(box(-0.1, drainY, d.deckTop - 0.1, frameWall + 0.2, drainWidth, d.top - d.deckTop + 0.2));
+    // Two short ribs carry the hanging load from the handle into the tray's
+    // rear wall. Stop before the hook opening, and leave its middle unobstructed.
+    for (const ribY of handleRibYs) {
+      tray = tray.fuse(gussetXZ([
+        [handleRibRootX, handleRibBaseZ],
+        [handleRibRootX, handleRibBaseZ + handleRibRun],
+        [handleRibRootX + handleRibRun, handleRibBaseZ],
+      ], ribY, handleRibWidth));
+    }
+    for (const x of d.screwXs) for (const y of d.screwYs) {
+      tray = tray.cut(cylinder(x, y, d.joinZ - 0.1, d.drop / 2, d.deckThickness + 0.2));
+      tray = tray.cut(cone(x, y, d.deckTop - 0.3, d.drop / 2, d.drop / 2 + TRAY_ENTRY_RADIAL_FLARE, 0.3));
+    }
+    for (const p of d.joints) {
+      // Start 0.2 mm wider than the tapered base land at the mating plane. The
+      // 45-degree socket reaches the R0.85 pilot continuously, leaving no flat
+      // inner ceiling that would need bridging or support below the tray deck.
+      tray = tray.cut(cone(p.x, p.y, d.joinZ - 0.05, 3.25, 0.85, 2.4));
+      if (settings.joint === "screws") tray = tray.cut(cylinder(p.x, p.y, d.joinZ + 1.4, 0.85, 2));
+    }
+    for (const p of d.magnets) tray = tray.cut(cylinder(p.x, p.y, d.top - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
   }
   options.onProgress?.({ phase: "building", completed: 2, total: 4, message: "Built tray" });
   const sw = d.width - 2 * d.sliderInsetY;
-  let slider = rounded(8, d.sliderInsetY, d.sliderZ, d.length - 8, sw, d.sliderThickness, 1.5).fuse(rounded(d.length, storageHandleY, d.sliderZ, storageHandleLength, storageHandleWidth, d.sliderThickness, 3));
-  slider = slider.cut(rounded(storageHandleOpeningX, storageHandleOpeningY, d.sliderZ - 0.1, storageHandleOpeningLength, storageHandleOpeningWidth, d.sliderThickness + 0.2, 2));
-  const last = d.screwXs.at(-1)!;
-  for (const y of d.screwYs) slider = slider.cut(rounded(d.releaseX - 1, y - d.slot / 2, d.sliderZ - 0.1, last + 3 - (d.releaseX - 1), d.slot, d.sliderThickness + 0.2, d.slot / 2 - 0.02)).cut(rounded(d.releaseX - d.window / 2, y - d.window / 2, d.sliderZ - 0.1, d.window, d.window, d.sliderThickness + 0.2, 0.65));
-  if (d.detent) {
-    const edge = d.width - d.sliderInsetY;
-    slider = slider.cut(rounded(10, edge - d.detent.springWidth - d.detent.reliefGap, d.sliderZ - 0.1, d.detent.springLength + 2, d.detent.reliefGap, d.sliderThickness + 0.2, 0.45)).cut(box(10, edge - d.detent.springWidth - d.detent.reliefGap + 0.4, d.sliderZ - 0.1, 0.8, d.detent.springWidth + d.detent.reliefGap + 2, d.sliderThickness + 0.2)).fuse(cylinder(d.detent.tipX, d.detent.tipY, d.sliderZ, d.detent.noseRadius, d.sliderThickness));
-    // The notch only needs to open into the slider channel. Keep the full
-    // floor below it so the detent does not perforate the printed underside.
-    for (const x of d.detent.notchX) base = base.cut(cylinder(x, d.detent.tipY, d.floor, d.detent.notchRadius, d.joinZ - d.floor + 0.1));
+  let slider = reusable("slider")?.shape;
+  if (!slider) {
+    slider = rounded(8, d.sliderInsetY, d.sliderZ, d.length - 8, sw, d.sliderThickness, 1.5).fuse(rounded(d.length, storageHandleY, d.sliderZ, storageHandleLength, storageHandleWidth, d.sliderThickness, 3));
+    slider = slider.cut(rounded(storageHandleOpeningX, storageHandleOpeningY, d.sliderZ - 0.1, storageHandleOpeningLength, storageHandleOpeningWidth, d.sliderThickness + 0.2, 2));
+    const last = d.screwXs.at(-1)!;
+    for (const y of d.screwYs) slider = slider.cut(rounded(d.releaseX - 1, y - d.slot / 2, d.sliderZ - 0.1, last + 3 - (d.releaseX - 1), d.slot, d.sliderThickness + 0.2, d.slot / 2 - 0.02)).cut(rounded(d.releaseX - d.window / 2, y - d.window / 2, d.sliderZ - 0.1, d.window, d.window, d.sliderThickness + 0.2, 0.65));
+    if (d.detent) {
+      const edge = d.width - d.sliderInsetY;
+      slider = slider.cut(rounded(10, edge - d.detent.springWidth - d.detent.reliefGap, d.sliderZ - 0.1, d.detent.springLength + 2, d.detent.reliefGap, d.sliderThickness + 0.2, 0.45)).cut(box(10, edge - d.detent.springWidth - d.detent.reliefGap + 0.4, d.sliderZ - 0.1, 0.8, d.detent.springWidth + d.detent.reliefGap + 2, d.sliderThickness + 0.2)).fuse(cylinder(d.detent.tipX, d.detent.tipY, d.sliderZ, d.detent.noseRadius, d.sliderThickness));
+    }
   }
   options.onProgress?.({ phase: "building", completed: 3, total: 4, message: "Built slider" });
-  let lid = rounded(0, 0, d.top, d.length, d.width, 3.4, 4).fuse(rounded(d.length - 1, d.width / 2 - 7, d.top, 6, 14, 3.4, 2.5));
-  const lidPocketInset = d.rim + 2;
-  lid = lid.cut(rounded(lidPocketInset, lidPocketInset, d.top - 0.1, d.length - 2 * lidPocketInset, d.width - 2 * lidPocketInset, 2.1, 2));
-  const lip = rounded(d.rim + 0.35, d.rim + 0.35, d.top - 1.2, d.length - 2 * d.rim - 0.7, d.width - 2 * d.rim - 0.7, 1.3, 3.35)
-    .cut(rounded(d.rim + 1.75, d.rim + 1.75, d.top - 1.3, d.length - 2 * d.rim - 3.5, d.width - 2 * d.rim - 3.5, 1.5, 2));
-  lid = lid.fuse(lip).fillet(0.6, (finder, shape) => finder.when(topMost(shape)).parallelTo("XY"));
-  // The plug keys into the tray's front rim cutout with 0.2 mm lateral
-  // clearance. It reaches the deck so a closed lid cannot let screws escape.
-  lid = lid.fuse(rounded(0.1, drainY + 0.1, d.deckTop, frameWall - 0.2, drainWidth - 0.2, d.top - d.deckTop + 0.1, 0.5));
-  // Brace the long discharge plug from the underside of the lid, inside the
-  // tray opening. The 45-degree face meets the plug without extending the lid
-  // past its front edge or reaching the first screw station.
   const gussetRun = 4.2;
   const gussetPlugX = frameWall - 0.3;
-  lid = lid.fuse(gussetXZ([
-    [gussetPlugX, d.top],
-    [gussetPlugX + gussetRun, d.top],
-    [gussetPlugX, d.top - gussetRun],
-  ], drainY + 0.1, drainWidth - 0.2));
-  for (const p of d.magnets) {
-    tray = tray.cut(cylinder(p.x, p.y, d.top - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
-    lid = lid.cut(cylinder(p.x, p.y, d.top - 0.1, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
+  let lid = reusable("lid")?.shape;
+  if (!lid) {
+    lid = rounded(0, 0, d.top, d.length, d.width, 3.4, 4).fuse(rounded(d.length - 1, d.width / 2 - 7, d.top, 6, 14, 3.4, 2.5));
+    const lidPocketInset = d.rim + 2;
+    lid = lid.cut(rounded(lidPocketInset, lidPocketInset, d.top - 0.1, d.length - 2 * lidPocketInset, d.width - 2 * lidPocketInset, 2.1, 2));
+    const lip = rounded(d.rim + 0.35, d.rim + 0.35, d.top - 1.2, d.length - 2 * d.rim - 0.7, d.width - 2 * d.rim - 0.7, 1.3, 3.35)
+      .cut(rounded(d.rim + 1.75, d.rim + 1.75, d.top - 1.3, d.length - 2 * d.rim - 3.5, d.width - 2 * d.rim - 3.5, 1.5, 2));
+    lid = lid.fuse(lip).fillet(0.6, (finder, shape) => finder.when(topMost(shape)).parallelTo("XY"));
+    // The plug keys into the tray's front rim cutout with 0.2 mm lateral
+    // clearance. It reaches the deck so a closed lid cannot let screws escape.
+    lid = lid.fuse(rounded(0.1, drainY + 0.1, d.deckTop, frameWall - 0.2, drainWidth - 0.2, d.top - d.deckTop + 0.1, 0.5));
+    // Brace the long discharge plug from the underside of the lid, inside the
+    // tray opening. The 45-degree face meets the plug without extending the lid
+    // past its front edge or reaching the first screw station.
+    lid = lid.fuse(gussetXZ([
+      [gussetPlugX, d.top],
+      [gussetPlugX + gussetRun, d.top],
+      [gussetPlugX, d.top - gussetRun],
+    ], drainY + 0.1, drainWidth - 0.2));
+    for (const p of d.magnets) lid = lid.cut(cylinder(p.x, p.y, d.top - 0.1, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
   }
   options.onProgress?.({ phase: "building", completed: 4, total: 4, message: "Built lid" });
   aborted();
@@ -284,20 +312,33 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     completed.push("Interactive preview geometry generated; export validation deferred");
   }
   const diagnostics = Object.fromEntries(Object.entries(parts).map(([name, part]) => {
+    const prior = reusable(name as keyof typeof keys);
+    if (prior) return [name, prior.diagnostic];
     const [min, max] = part.boundingBox.bounds;
     return [name, { volume: measureShapeVolumeProperties(part).volume, bounds: { min, max } }];
   })) as Record<"base" | "tray" | "slider" | "lid", PartDiagnostic>;
+  const meshTolerance = configuration.meshTolerance ?? 0.08;
   const partMeshes = Object.fromEntries(Object.entries(parts).map(([name, part]) => {
-    const mesh = part.mesh({ tolerance: configuration.meshTolerance ?? 0.08, angularTolerance: 0.2 });
+    const prior = reusable(name as keyof typeof keys);
+    if (prior?.meshTolerance === meshTolerance) return [name, prior.mesh];
+    const mesh = part.mesh({ tolerance: meshTolerance, angularTolerance: 0.2 });
     return [name, {
       positions: Float32Array.from(mesh.vertices),
       normals: Float32Array.from(mesh.normals),
       indices: Uint32Array.from(mesh.triangles),
     }];
   })) as Record<"base" | "tray" | "slider" | "lid", TriangleMesh>;
+  for (const name of Object.keys(parts) as Array<keyof typeof parts>) {
+    const prior = partCache[name];
+    partCache[name] = { key: keys[name], shape: parts[name], mesh: partMeshes[name], meshTolerance, diagnostic: diagnostics[name], stl: prior?.key === keys[name] ? prior.stl : undefined };
+  }
+  const partStl = (name: keyof typeof parts, shape: Shape3D): Blob => {
+    const cached = partCache[name]!;
+    return cached.stl ??= printOrientation(shape.clone()).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 });
+  };
   const files: Partial<Record<GeneratedFileName, Blob>> = configuration.includeExports === false ? {} : {
-    "base.stl": printOrientation(base.clone()).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }), "tray.stl": printOrientation(tray.clone()).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }),
-    "slider.stl": printOrientation(slider.clone()).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }), "lid.stl": printOrientation(lid.clone().rotate(180, [0, 0, 0], [1, 0, 0])).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }),
+    "base.stl": partStl("base", base), "tray.stl": partStl("tray", tray),
+    "slider.stl": partStl("slider", slider), "lid.stl": partCache.lid!.stl ??= printOrientation(lid.clone().rotate(180, [0, 0, 0], [1, 0, 0])).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }),
     "assembly.step": exportSTEP([{ shape: base, name: "base" }, { shape: tray, name: "tray" }, { shape: slider, name: "slider" }, { shape: lid, name: "lid" }]),
   };
   return { files, warnings: [], verification: { completed, pending: ["Full per-station release and retention checks", "Physical print fit and detent force of the browser revision"] }, diagnostics, partMeshes };
