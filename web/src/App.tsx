@@ -3,9 +3,11 @@ import JSZip from 'jszip'
 import { DEFAULT_PREVIEW_CONFIRM_BYTES, DEFAULT_SETTINGS, deriveDimensions, generateModel, generatePreviewModel, getDefaultPreviewInfo, loadDefaultPreview, validateSettings, type GeneratedModel, type ModelPart, type PreviewModel, type Settings, type TriangleMesh } from './cad'
 import { createBambu3mf, type Print3mfArtifact } from './print3mf'
 import { DimensionPreview } from './components/DimensionPreview'
+import type { ViewMode } from './components/ModelViewer'
 import { SettingsForm } from './components/SettingsForm'
 import { PRINT_PLATE_OPTIONS, SETTINGS_CATEGORIES, SETTINGS_FIELDS, type PrintPlateOption } from './settings-schema'
 import { currentConnectionNeedsConfirmation } from './network'
+import './styles/preview.css'
 
 type State = 'ready' | 'generating' | 'complete' | 'error'
 type PreviewState = 'idle' | 'generating' | 'error'
@@ -35,6 +37,7 @@ export default function App() {
   const [realtimePreview, setRealtimePreview] = useState(true)
   const [printArtifact, setPrintArtifact] = useState<Print3mfArtifact | null>(null)
   const [showPrintPreview, setShowPrintPreview] = useState(false)
+  const [previewMode, setPreviewMode] = useState<ViewMode>('2d')
   const [previewPlateIndex, setPreviewPlateIndex] = useState(0)
   const [printState, setPrintState] = useState<PrintState>('ready')
   const [printStatus, setPrintStatus] = useState('')
@@ -241,6 +244,7 @@ export default function App() {
     <div className="tool-layout">
       <section className="panel form-panel" aria-labelledby="settings-title">
         <div className="section-heading"><h2 id="settings-title">設定</h2><span>基本</span></div>
+        {displayMeshes && !isPrintPreview && previewMode !== '2d' && <div className="settings-mini-preview"><DimensionPreview dimensions={displayDimensions} compact /></div>}
         <SettingsForm fields={SETTINGS_FIELDS.filter((field) => field.category === 'basic')} settings={settings} onChange={update} />
         <button className="details-button" type="button" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}>
           {advanced ? '詳細設定を隠す' : '詳細設定'} <span aria-hidden="true">⌄</span>
@@ -254,14 +258,19 @@ export default function App() {
       </section>
       <aside className="side-column">
         <section className="panel preview-panel" aria-labelledby="preview-title">
-          <div className="section-heading"><h2 id="preview-title">プレビュー</h2><span>{isPrintPreview ? '印刷プレート' : displayMeshes ? '3D' : '寸法・上面'}</span></div>
+          <div className="section-heading"><h2 id="preview-title">プレビュー</h2><span>{isPrintPreview ? '印刷プレート' : previewMode === '2d' || !displayMeshes ? '2D' : '3D'}</span></div>
           <div className="preview-controls">
             <label className="preview-toggle"><input type="checkbox" checked={realtimePreview} onChange={(event) => { setRealtimePreview(event.target.checked); if (!event.target.checked) { previewGeneration.current?.abort(); setPreviewState('idle'); setPreviewStatus('リアルタイムプレビューはオフです。') } }} />リアルタイムプレビュー</label>
             {printArtifact && <button className="preview-mode-button" type="button" onClick={() => setShowPrintPreview((value) => !value)}>{isPrintPreview ? '組立プレビューに戻る' : '印刷プレビューを表示'}</button>}
             {(!realtimePreview || previewState !== 'idle') && <p className={`preview-status ${previewState}`} role="status" aria-live="polite">{previewState === 'generating' && <span className="spinner" aria-hidden="true" />}{previewStatus}</p>}
           </div>
+          {!isPrintPreview && <div className="viewer-toolbar" role="group" aria-label="プレビュー表示モード">
+            <button className={previewMode === 'assembled' ? 'selected' : ''} type="button" onClick={() => setPreviewMode('assembled')} aria-pressed={previewMode === 'assembled'}>完成</button>
+            <button className={previewMode === 'exploded' ? 'selected' : ''} type="button" onClick={() => setPreviewMode('exploded')} aria-pressed={previewMode === 'exploded'}>パーツ分離</button>
+            <button className={previewMode === '2d' ? 'selected' : ''} type="button" onClick={() => setPreviewMode('2d')} aria-pressed={previewMode === '2d'}>2D</button>
+          </div>}
           {isPrintPreview && printArtifact.plates.length > 1 && <div className="plate-tabs" role="group" aria-label="印刷プレートを選択">{printArtifact.plates.map((plate, index) => <button key={index} type="button" aria-pressed={previewPlateIndex === index} className={previewPlateIndex === index ? 'selected' : ''} onClick={() => setPreviewPlateIndex(index)}>プレート {index + 1} <span>{plate.placements.length}部品</span></button>)}</div>}
-          {displayMeshes ? <Suspense fallback={<div className="preview-empty">3Dプレビューを準備しています…</div>}><ModelViewer meshes={displayMeshes} {...(printPreviewPlate ? { printPlateSize: { width: printPreviewPlate.width, depth: printPreviewPlate.depth } } : {})} /></Suspense> : <DimensionPreview dimensions={dimensions} />}
+          {displayMeshes ? <Suspense fallback={<div className="preview-empty">3Dプレビューを準備しています…</div>}><ModelViewer meshes={displayMeshes} dimensions={isPrintPreview ? null : previewMode === '2d' ? dimensions : displayDimensions} mode={printPreviewPlate ? 'assembled' : previewMode} {...(printPreviewPlate ? { printPlateSize: { width: printPreviewPlate.width, depth: printPreviewPlate.depth } } : {})} /></Suspense> : <DimensionPreview dimensions={dimensions} />}
           {displayDimensions && <dl className="dimensions">
             <div><dt>外形</dt><dd>{fmt(displayDimensions.length)} × {fmt(displayDimensions.width)} × {fmt(displayDimensions.top)} mm</dd></div>
             <div><dt>ピッチ</dt><dd>{fmt(displayDimensions.pitch)} mm</dd></div>
@@ -365,6 +374,7 @@ function localizeValidation(message: string) {
     'Need shaft + 0.3 <= slot <= head - 0.6; measure the actual screw': '軸径 + 0.3 mm ≤ スロット幅 ≤ 頭径 − 0.6 mm となるよう、実物のねじを測ってください。',
     'All numeric settings must be finite numbers': '数値欄には有限の値を入力してください。',
     'Pitch needs >= window + 1.8 mm for separated batches': 'ピッチをねじ頭の窓幅より1.8 mm以上大きくしてください。',
+    'Need at least 0.5 mm between the corner screw and magnet pocket; increase screw space height or use a thinner magnet': '四隅のねじと磁石穴の間隔を0.5 mm以上にしてください。ねじ収納スペースの高さを増やすか、薄い磁石を選んでください。',
   }
   return translations[message] ?? message
 }

@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import type { ModelPart, TriangleMesh } from '../cad'
+import type { DerivedDimensions, ModelPart, TriangleMesh } from '../cad'
+import { DimensionPreview } from './DimensionPreview'
 
-type ViewMode = 'assembled' | 'exploded'
-type Props = { meshes: Partial<Record<ModelPart, TriangleMesh>>; printPlateSize?: { width: number; depth: number } }
+export type ViewMode = 'assembled' | 'exploded' | '2d'
+type Props = {
+  meshes: Partial<Record<ModelPart, TriangleMesh>>
+  dimensions?: DerivedDimensions | null
+  mode: ViewMode
+  printPlateSize?: { width: number; depth: number }
+}
 
 const PARTS: readonly { id: ModelPart; label: string; color: number; offset: [number, number, number] }[] = [
   { id: 'base', label: 'ベース', color: 0x64748b, offset: [-8, -7, -4] },
@@ -13,15 +19,22 @@ const PARTS: readonly { id: ModelPart; label: string; color: number; offset: [nu
   { id: 'lid', label: 'ふた', color: 0x3b82f6, offset: [0, 0, 19] },
 ]
 
-export function ModelViewer({ meshes, printPlateSize }: Props) {
+export function ModelViewer({ meshes, dimensions = null, mode, printPlateSize }: Props) {
   const host = useRef<HTMLDivElement>(null)
-  const [mode, setMode] = useState<ViewMode>('assembled')
   const [separation, setSeparation] = useState(100)
+  const [visibleParts, setVisibleParts] = useState<Partial<Record<ModelPart, boolean>>>({})
   const [webglUnavailable, setWebglUnavailable] = useState(false)
   const modeRef = useRef(mode)
   const separationRef = useRef(separation)
+  const visiblePartsRef = useRef(visibleParts)
+  const show3d = mode !== '2d' || Boolean(printPlateSize)
   modeRef.current = mode
   separationRef.current = separation
+  visiblePartsRef.current = visibleParts
+
+  const togglePart = (part: ModelPart) => {
+    setVisibleParts((current) => ({ ...current, [part]: current[part] === false }))
+  }
 
   useEffect(() => {
     const container = host.current
@@ -51,7 +64,7 @@ export function ModelViewer({ meshes, printPlateSize }: Props) {
     scene.add(key)
 
     const group = new THREE.Group()
-    const displayMeshes: { object: THREE.Mesh; offset: THREE.Vector3 }[] = []
+    const displayMeshes: { id: ModelPart; object: THREE.Mesh; offset: THREE.Vector3 }[] = []
     const bounds = new THREE.Box3()
     let plate: THREE.Mesh | undefined
     if (printPlateSize) {
@@ -74,7 +87,7 @@ export function ModelViewer({ meshes, printPlateSize }: Props) {
       bounds.union(geometry.boundingBox!)
       const object = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: part.color, roughness: 0.62, metalness: 0.05 }))
       group.add(object)
-      displayMeshes.push({ object, offset: new THREE.Vector3(...part.offset) })
+      displayMeshes.push({ id: part.id, object, offset: new THREE.Vector3(...part.offset) })
     })
     const center = bounds.getCenter(new THREE.Vector3())
     group.position.copy(center).multiplyScalar(-1)
@@ -94,10 +107,31 @@ export function ModelViewer({ meshes, printPlateSize }: Props) {
     const observer = new ResizeObserver(resize)
     observer.observe(container)
     resize()
+    const raycaster = new THREE.Raycaster()
+    const pointer = new THREE.Vector2()
+    let pointerDown: { x: number; y: number } | undefined
+    const onPointerDown = (event: PointerEvent) => { pointerDown = { x: event.clientX, y: event.clientY } }
+    const onClick = (event: MouseEvent) => {
+      if (!pointerDown || Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 5) return
+      const rect = renderer.domElement.getBoundingClientRect()
+      pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1)
+      raycaster.setFromCamera(pointer, camera)
+      const hit = raycaster.intersectObjects(displayMeshes.filter(({ object }) => object.visible).map(({ object }) => object), false)[0]
+      if (!hit) return
+      const part = displayMeshes.find(({ object }) => object === hit.object)
+      if (part) togglePart(part.id)
+    }
+    if (!printPlateSize) {
+      renderer.domElement.addEventListener('pointerdown', onPointerDown)
+      renderer.domElement.addEventListener('click', onClick)
+    }
     let frame = 0
     const render = () => {
       const factor = !printPlateSize && modeRef.current === 'exploded' ? separationRef.current / 100 : 0
-      displayMeshes.forEach(({ object, offset }) => object.position.copy(offset).multiplyScalar(factor * 0.9))
+      displayMeshes.forEach(({ id, object, offset }) => {
+        object.position.copy(offset).multiplyScalar(factor * 0.9)
+        object.visible = Boolean(printPlateSize) || visiblePartsRef.current[id] !== false
+      })
       const zoom = 1 / (1 + factor * 0.4)
       if (camera.zoom !== zoom) {
         camera.zoom = zoom
@@ -111,26 +145,29 @@ export function ModelViewer({ meshes, printPlateSize }: Props) {
     return () => {
       cancelAnimationFrame(frame)
       observer.disconnect()
+      if (!printPlateSize) {
+        renderer.domElement.removeEventListener('pointerdown', onPointerDown)
+        renderer.domElement.removeEventListener('click', onClick)
+      }
       controls.dispose()
       displayMeshes.forEach(({ object }) => { object.geometry.dispose(); (object.material as THREE.Material).dispose() })
       if (plate) { plate.geometry.dispose(); (plate.material as THREE.Material).dispose() }
       renderer.dispose()
       renderer.domElement.remove()
     }
-  }, [meshes, printPlateSize])
+  }, [meshes, printPlateSize, show3d])
 
   return <div className="model-viewer">
-    {!printPlateSize && <div className="viewer-toolbar" role="group" aria-label="3Dプレビュー表示">
-      <button className={mode === 'assembled' ? 'selected' : ''} type="button" onClick={() => setMode('assembled')} aria-pressed={mode === 'assembled'}>完成</button>
-      <button className={mode === 'exploded' ? 'selected' : ''} type="button" onClick={() => setMode('exploded')} aria-pressed={mode === 'exploded'}>パーツ分離</button>
-    </div>}
-    {!printPlateSize && <label className="separation-control">
+    {!printPlateSize && mode !== '2d' && <label className="separation-control">
       <span>分離距離</span>
       <input type="range" min="0" max="180" step="5" value={separation} disabled={mode !== 'exploded'} onChange={(event) => setSeparation(Number(event.target.value))} />
       <output>{separation}%</output>
     </label>}
-    {webglUnavailable ? <div className="viewer-fallback">このブラウザでは3Dプレビューを表示できません。ダウンロードしたSTLまたはSTEPをご利用ください。</div> : <div className="viewer-canvas" ref={host} aria-label={printPlateSize ? '印刷プレート上の配置を回転・移動・ズームできる3Dプレビュー' : 'マウスまたはタッチ操作で回転とズームができる3Dプレビュー'} />}
-    <div className="part-legend" aria-label="パーツの色">{PARTS.filter(({ id }) => Boolean(meshes[id])).map(({ id, label }) => <span key={id} className={id}>{label}</span>)}</div>
-    <p className="viewer-help">{printPlateSize ? `${printPlateSize.width} × ${printPlateSize.depth} mmプレート。` : ''}ドラッグで回転、右ドラッグまたは2本指で移動、ホイールまたはピンチで拡大・縮小</p>
+    {mode === '2d' && !printPlateSize ? <DimensionPreview dimensions={dimensions} /> : <>
+      {webglUnavailable ? <div className="viewer-fallback">このブラウザでは3Dプレビューを表示できません。ダウンロードしたSTLまたはSTEPをご利用ください。</div> : <div className="viewer-stage"><div className="viewer-canvas" ref={host} aria-label={printPlateSize ? '印刷プレート上の配置を回転・移動・ズームできる3Dプレビュー' : 'クリックでパーツを表示・非表示にできる3Dプレビュー'} /></div>}
+      {!printPlateSize && <div className="part-controls" role="group" aria-label="3Dパーツの表示切替">{PARTS.filter(({ id }) => Boolean(meshes[id])).map(({ id, label }) => <button key={id} type="button" className={`${id}${visibleParts[id] === false ? ' hidden' : ''}`} aria-pressed={visibleParts[id] !== false} onClick={() => togglePart(id)}>{label}</button>)}</div>}
+      <div className="part-legend" aria-label="パーツの色">{PARTS.filter(({ id }) => Boolean(meshes[id])).map(({ id, label }) => <span key={id} className={id}>{label}</span>)}</div>
+      <p className="viewer-help">{printPlateSize ? `${printPlateSize.width} × ${printPlateSize.depth} mmプレート。` : 'パーツ名またはモデルをクリックして表示・非表示を切り替えます。'} ドラッグで回転、右ドラッグまたは2本指で移動、ホイールまたはピンチで拡大・縮小</p>
+    </>}
   </div>
 }

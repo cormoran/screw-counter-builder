@@ -17,7 +17,9 @@ describe("browser CAD integration", () => {
     expect(model.files["assembly.step"].size).toBeGreaterThan(0);
     expect(model.verification.completed).toContain("4 valid single solids");
     expect(model.verification.completed).toContain("Detent pockets retain the base floor; inter-station clearance verified");
-    expect(model.verification.completed).toContain("Thin frame, reinforced fasteners, and lid skin verified");
+    expect(model.verification.completed).toContain("Thin frame, reinforced corners, and lid skin verified");
+    expect(model.verification.completed).toContain("Coaxial corner fasteners and magnet pockets remain vertically separated");
+    expect(model.dimensions.joints).toEqual(model.dimensions.magnets);
     expect(model.verification.completed).toContain("Assembly screw counterbore retains its head seat and 45-degree roof");
     expect(model.dimensions.screwSpaceHeight).toBe(15);
     expect(model.dimensions.deckThickness).toBe(1.6);
@@ -48,8 +50,8 @@ describe("browser CAD integration", () => {
   ])("generates the $screw $rows x $columns $joint validation case", async (settings) => {
     const model = await generateModel(settings);
     expect(model.verification.completed).toContain("Release, retention, and shaft clearance checked at representative stations");
-    expect(model.verification.completed).toContain("Magnet pockets and registration-boss clearance verified");
-    expect(model.verification.completed).toContain("Thin frame, reinforced fasteners, and lid skin verified");
+    expect(model.verification.completed).toContain("Coaxial corner fasteners and magnet pockets remain vertically separated");
+    expect(model.verification.completed).toContain("Thin frame, reinforced corners, and lid skin verified");
     expect(model.files["assembly.step"].size).toBeGreaterThan(0);
     expect(model.dimensions.screwXs).toHaveLength(settings.columns);
     expect(model.dimensions.screwYs).toHaveLength(settings.rows);

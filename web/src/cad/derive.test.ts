@@ -12,6 +12,7 @@ describe("browser CAD dimensions", () => {
     expect(d.deckThickness).toBeCloseTo(1.6);
     expect(d.screwXs).toEqual([22, 30]);
     expect(d.screwYs.map((y) => Number(y.toFixed(1)))).toEqual([15.1, 23.1, 31.1, 39.1]);
+    expect(d.joints).toEqual(d.magnets);
   });
 
   it("derives the standard M2 4x10 positions", () => {
@@ -25,6 +26,8 @@ describe("browser CAD dimensions", () => {
     expect(validateSettings({ magnetDiameter: Number.NaN })).not.toEqual([]);
     expect(validateSettings({ columns: 25 })).not.toEqual([]);
     expect(validateSettings({ screwSpaceHeight: 3 })).not.toEqual([]);
+    expect(validateSettings({ screwSpaceHeight: 3.5, magnetThickness: 3, magnetDepthClearance: 0.3 })).not.toEqual([]);
+    expect(validateSettings({ screwSpaceHeight: 3.5, magnetThickness: 3, magnetDepthClearance: 0.3, joint: "glue" })).toEqual([]);
   });
 
   it("changes the enclosure height while retaining the lid clearance", () => {

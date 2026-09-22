@@ -57,7 +57,7 @@ export async function generateModel(input: SettingsInput = {}, options: Generate
     physical_print_test: false,
     print_orientation: "STLs lie flat; lid exterior face down; no slicer supports intended",
     assembly_screws: settings.joint === "screws"
-      ? "4 x M2x8; flat-underhead diameter <=4.2, height <=2.2; pilot 1.7"
+      ? "4 x M2x5; flat-underhead diameter <=4.2, height <=2.2; pilot 1.7; corner screws stop below magnet pockets"
       : "adhesive on mating lands, keep out of slide path",
   };
   result.files["dimensions.json"] = new Blob([JSON.stringify(metadata, null, 2)], { type: "application/json" });

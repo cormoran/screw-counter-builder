@@ -1,0 +1,23 @@
+.settings-mini-preview {
+  position: absolute;
+  z-index: 1;
+  top: 54px;
+  right: 14px;
+  width: 154px;
+}
+
+.settings-mini-preview + .fields {
+  padding-top: 146px;
+}
+
+@media (max-width: 820px) {
+  .settings-mini-preview {
+    position: static;
+    width: 100%;
+    margin: 0 0 14px;
+  }
+
+  .settings-mini-preview + .fields {
+    padding-top: 0;
+  }
+}
