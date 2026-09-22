@@ -23,6 +23,9 @@ const rounded = (x: number, y: number, z: number, dx: number, dy: number, dz: nu
 const handleWithSquareRoot = (x: number, y: number, z: number, length: number, width: number, thickness: number): Shape3D =>
   box(x, y, z, length - 3, width, thickness)
     .fuse(rounded(x + length - 6, y, z, 6, width, thickness, 2.8));
+const sliderBodyWithSquareHandleEnd = (x: number, y: number, z: number, length: number, width: number, thickness: number): Shape3D =>
+  rounded(x, y, z, 3.2, width, thickness, 1.5)
+    .fuse(box(x + 1.6, y, z, length - 1.6, width, thickness));
 const intersectionVolume = (left: Shape3D, right: Shape3D) => measureShapeVolumeProperties(left.intersect(right)).volume;
 const cone = (x: number, y: number, z: number, lowerRadius: number, upperRadius: number, height: number): Shape3D =>
   sketchCircle(lowerRadius, { plane: "XY", origin: [x, y, z] }).loftWith(sketchCircle(upperRadius, { plane: "XY", origin: [x, y, z + height] }), {});
@@ -37,11 +40,6 @@ const prismYZ = (points: Array<[number, number]>, x: number, length: number): Sh
   const sketch = new Sketcher("YZ", [x, 0, 0]).movePointerTo(points[0]);
   for (const point of points.slice(1)) sketch.lineTo(point);
   return sketch.close().extrude(length);
-};
-const prismXY = (points: Array<[number, number]>, z: number, height: number): Shape3D => {
-  const sketch = new Sketcher("XY", [0, 0, z]).movePointerTo(points[0]);
-  for (const point of points.slice(1)) sketch.lineTo(point);
-  return sketch.close().extrude(height);
 };
 
 type CachedCadPart = { key: string; shape: Shape3D; mesh: TriangleMesh; meshTolerance: number; diagnostic: PartDiagnostic; stl?: Blob };
@@ -71,21 +69,18 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   aborted();
   const keys = partKeys(settings, d);
   const reusable = <P extends keyof typeof keys>(part: P) => partCache[part]?.key === keys[part] ? partCache[part] : undefined;
-  // The low-Y rail is opposite the high-Y click spring. A short closed end in
-  // its open-top groove catches the slider lug after the final release station.
-  // The lug sits on a laterally flexible tongue, allowing it to snap past that
-  // end wall while the slider is inserted from the +X handle end.
+  // The low-Y rail is opposite the high-Y click spring. Its open-top groove
+  // takes a rigid guide rib that runs from near the slider nose to the stop.
+  // Place the slider from above before fastening the tray to the base.
   const sliderStop = {
     grooveStartX: 7.7,
     grooveEndX: d.length - 1.1,
     grooveY: d.wall - 1,
     grooveWidth: 1.4,
-    lugX: d.length - settings.columns * d.pitch - 3,
-    lugLength: 1.6,
-    lugDepth: 0.75,
-    tongueLength: 10,
-    tongueWidth: 0.75,
-    flexClearance: 0.25,
+    ribStartX: 10,
+    ribEndX: d.length - settings.columns * d.pitch - 1.4,
+    ribY: d.wall - 0.7,
+    ribWidth: d.sliderInsetY - (d.wall - 0.7) + 0.2,
   };
   let base = reusable("base")?.shape;
   if (!base) {
@@ -197,31 +192,17 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const sw = d.width - 2 * d.sliderInsetY;
   let slider = reusable("slider")?.shape;
   if (!slider) {
-    slider = rounded(8, d.sliderInsetY, d.sliderZ, d.length - 8, sw, d.sliderThickness, 1.5).fuse(handleWithSquareRoot(d.length, storageHandleY, d.sliderZ, storageHandleLength, storageHandleWidth, d.sliderThickness));
+    // Keep the handle's outward-facing root corners rounded. Square the body
+    // end instead, so its inward-facing junction corners do not form a fillet.
+    slider = sliderBodyWithSquareHandleEnd(8, d.sliderInsetY, d.sliderZ, d.length - 8, sw, d.sliderThickness)
+      .fuse(rounded(d.length, storageHandleY, d.sliderZ, storageHandleLength, storageHandleWidth, d.sliderThickness, 3));
     slider = slider.cut(rounded(storageHandleOpeningX, storageHandleOpeningY, d.sliderZ - 0.1, storageHandleOpeningLength, storageHandleOpeningWidth, d.sliderThickness + 0.2, 2));
-    // A U-slot leaves a low-side cantilever tongue. Its lug enters the base
-    // groove during normal travel and flexes inward to pass the closed end on
-    // intentional insertion or removal.
-    const tongueEndX = sliderStop.lugX + sliderStop.lugLength + 0.1;
-    slider = slider
-      .cut(box(
-        sliderStop.lugX - sliderStop.tongueLength, d.sliderInsetY + sliderStop.tongueWidth,
-        d.sliderZ - 0.1, tongueEndX - (sliderStop.lugX - sliderStop.tongueLength), 0.8,
-        d.sliderThickness + 0.2,
-      ))
-      .cut(box(
-        tongueEndX, d.sliderInsetY - 0.1, d.sliderZ - 0.1, 0.45,
-        sliderStop.tongueWidth + 1, d.sliderThickness + 0.2,
-      ))
-      // The -X face is a 45-degree cam that gradually flexes the tongue inward
-      // during insertion. The +X face remains vertical for a positive pullout
-      // catch against the base groove's closed end.
-      .fuse(prismXY([
-        [sliderStop.lugX, d.sliderInsetY + 0.15],
-        [sliderStop.lugX + sliderStop.lugDepth, d.sliderInsetY - sliderStop.lugDepth],
-        [sliderStop.lugX + sliderStop.lugLength, d.sliderInsetY - sliderStop.lugDepth],
-        [sliderStop.lugX + sliderStop.lugLength, d.sliderInsetY + 0.15],
-      ], d.sliderZ, d.sliderThickness));
+    // This solid rib cannot flex. It supports the low edge over a longer run
+    // and ends 0.3 mm before the base's closed groove end at full release.
+    slider = slider.fuse(box(
+      sliderStop.ribStartX, sliderStop.ribY, d.sliderZ,
+      sliderStop.ribEndX - sliderStop.ribStartX, sliderStop.ribWidth, d.sliderThickness,
+    ));
     const last = d.screwXs.at(-1)!;
     for (const y of d.screwYs) slider = slider.cut(rounded(d.releaseX - 1, y - d.slot / 2, d.sliderZ - 0.1, last + 3 - (d.releaseX - 1), d.slot, d.sliderThickness + 0.2, d.slot / 2 - 0.02)).cut(rounded(d.releaseX - d.window / 2, y - d.window / 2, d.sliderZ - 0.1, d.window, d.window, d.sliderThickness + 0.2, 0.65));
     if (d.detent) {
@@ -313,8 +294,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   }
   completed.push("Release, retention, and shaft clearance checked at representative stations");
   const fullReleaseTravel = settings.columns * d.pitch;
-  // Exclude the click tip here: the stop check must prove the opposite-side
-  // lug catches, rather than merely observing detent contact between stations.
+  // Exclude the click tip here so the opposite-side rigid rib must catch.
   const sliderWithoutClickTip = d.detent
     ? slider.cut(cylinder(d.detent.tipX, d.detent.tipY, d.sliderZ, d.detent.noseRadius, d.sliderThickness))
     : slider;
@@ -324,31 +304,15 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       intersectionVolume(base, sliderPastPulloutStop) < 0.01) {
     throw new Error("Slider pullout stop must clear full release travel and catch beyond it");
   }
-  const tongueSlotProbe = box(
-    sliderStop.lugX - sliderStop.tongueLength + 0.3, d.sliderInsetY + sliderStop.tongueWidth + 0.1,
-    d.sliderZ - 0.05, sliderStop.tongueLength + sliderStop.lugLength - 0.5, 0.5,
-    d.sliderThickness + 0.1,
-  );
-  const lugLeadClearanceProbe = box(
-    sliderStop.lugX + 0.05, d.sliderInsetY - sliderStop.lugDepth + 0.05, d.sliderZ + 0.2,
-    0.05, 0.1, d.sliderThickness - 0.4,
-  );
-  const lugCatchProbe = box(
-    sliderStop.lugX + sliderStop.lugDepth - 0.1, d.sliderInsetY - sliderStop.lugDepth + 0.05,
-    d.sliderZ + 0.2, 0.05, 0.1, d.sliderThickness - 0.4,
-  );
-  const flexDistance = sliderStop.lugDepth - settings.slideClearance + sliderStop.flexClearance;
-  const flexedLugAtInsertion = box(
-    sliderStop.lugX, d.sliderInsetY - sliderStop.lugDepth, d.sliderZ,
-    sliderStop.lugLength, sliderStop.lugDepth + 0.15, d.sliderThickness,
-  ).translate(fullReleaseTravel + d.pitch / 4, flexDistance, 0);
-  if (intersectionVolume(slider, tongueSlotProbe) >= 1e-5 ||
-      intersectionVolume(slider, lugLeadClearanceProbe) >= 1e-5 ||
-      intersectionVolume(slider, lugCatchProbe) < 0.001 ||
-      intersectionVolume(base, flexedLugAtInsertion) >= 1e-5) {
-    throw new Error("Slider pullout tongue must retain its lead-in and flex past the base stop for insertion");
+  if (sliderStop.ribEndX - sliderStop.ribStartX < 10) throw new Error("Slider pullout guide rib is too short");
+  for (const x of [sliderStop.ribStartX + 0.5, (sliderStop.ribStartX + sliderStop.ribEndX) / 2, sliderStop.ribEndX - 0.5]) {
+    const ribProbe = box(x, sliderStop.ribY + 0.2, d.sliderZ + 0.2, 0.2, 0.2, d.sliderThickness - 0.4);
+    const openingProbe = box(x, sliderStop.ribY + 0.2, d.sliderZ + 0.2, 0.2, 0.2, d.joinZ - d.sliderZ);
+    if (intersectionVolume(slider, ribProbe) < 0.005 || intersectionVolume(base, openingProbe) >= 1e-5) {
+      throw new Error("Rigid slider guide rib must run near the nose inside an open-top groove");
+    }
   }
-  completed.push("Low-side pullout groove, 45-degree flexible slider tongue, and full release travel verified");
+  completed.push("Low-side pullout groove, rigid nose-length slider rib, and full release travel verified");
   if (settings.lidAlignment === "pegs") {
     for (const peg of d.magnets) {
       const fittedPeg = cylinder(peg.x, peg.y, d.top - lidPegHeight, lidPegRadius, lidPegHeight);
@@ -420,13 +384,15 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const rootCornerX = storageHandleX + 0.5;
   const rootCornerY = storageHandleY + 0.3;
   const tipCornerX = storageHandleX + storageHandleLength - 0.5;
-  for (const [part, z] of [[tray, d.joinZ], [slider, d.sliderZ]] as const) {
-    if (intersectionVolume(part, cylinder(rootCornerX, rootCornerY, z + 0.5, 0.1, 0.1)) < 0.002 ||
-        intersectionVolume(part, cylinder(tipCornerX, rootCornerY, z + 0.5, 0.1, 0.1)) >= 1e-5) {
-      throw new Error("Storage handles must have square roots and rounded outer tips");
-    }
+  if (intersectionVolume(tray, cylinder(rootCornerX, rootCornerY, d.joinZ + 0.5, 0.1, 0.1)) < 0.002 ||
+      intersectionVolume(tray, cylinder(tipCornerX, rootCornerY, d.joinZ + 0.5, 0.1, 0.1)) >= 1e-5 ||
+      intersectionVolume(slider, cylinder(rootCornerX, rootCornerY, d.sliderZ + 0.5, 0.1, 0.1)) >= 1e-5 ||
+      intersectionVolume(slider, cylinder(storageHandleX + 2.5, rootCornerY, d.sliderZ + 0.5, 0.1, 0.1)) < 0.002 ||
+      intersectionVolume(slider, cylinder(storageHandleX - 0.3, d.sliderInsetY + 0.3, d.sliderZ + 0.5, 0.1, 0.1)) < 0.002 ||
+      intersectionVolume(slider, cylinder(tipCornerX, rootCornerY, d.sliderZ + 0.5, 0.1, 0.1)) >= 1e-5) {
+    throw new Error("Tray handle root must be square; slider convex root rounded and concave body junction square");
   }
-  completed.push("Tray and slider handle roots are square while outer tips stay rounded");
+  completed.push("Tray handle root square; slider convex root rounded and concave body junction square");
   const handleRibProbeX = handleRibRootX + handleRibRun / 2;
   for (const probeY of [handleRibY + 1.5, handleCenterY, handleRibY + handleRibWidth - 1.5]) {
     if (intersectionVolume(tray, cylinder(handleRibProbeX, probeY, handleRibBaseZ + 0.8, 0.12, 0.12)) < 0.003 ||
