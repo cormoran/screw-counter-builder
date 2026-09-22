@@ -1,55 +1,57 @@
 # Screw Counter Builder
 
-ネジを決まった本数ずつ梱包するための、3Dプリント製計数トレーのCadQueryモデルです。
-現在は **Revision 4**。標準はM2・4本×10列で、1列ごとに軽いクリックが掛かる構造です。
+> 日本語版はこちら: [README_日本語](README_ja.md)
 
-![構造](ScrewCounter_M2_preview.png)
+A browser-based generator for a 3D-printable tray that dispenses screws in repeatable batches. Configure the screw and batch dimensions, inspect the model, then generate files without sending the design to a server.
 
-## セットアップ
+[Open Screw Counter Builder](https://cormoran.github.io/screw-counter-builder/)
 
-Python 3.10以上を使用します。生成確認済みのCadQuery 2.7.0を固定しています。
+## What it generates
 
-```sh
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python design_screw_counter.py --rows 4 --columns 10 --screw M2 --out generated
-```
+- Print-oriented STL files for the base, tray, slider, and lid.
+- An assembly-position STEP file.
+- A ZIP containing the CAD files, dimensions, and validation results.
+- A Bambu Studio 3MF with the four parts placed on a selected print plate.
 
-## Web版（ブラウザ内生成）
+The generator runs in the browser with Replicad and OpenCascade WebAssembly. The CAD engine and generated model stay on your device.
 
-`web/` にブラウザだけで動く生成画面を用意しています。[公開サイト](https://cormoran.github.io/screw-counter-builder/)では、左側の3Dプレビューを見ながら右側で設定を変更できます。既定モデルは事前生成されたメッシュを読み込み、設定変更後は少し待ってプレビューを再生成します。自動更新は切り替えられます。完成状態とパーツ分離状態をマウス・タッチで回転、移動、ズームできます。
+## Use the web app
 
-4部品の印刷用STL、組立STEP、寸法・検証JSONを個別またはZIPでダウンロードできます。Bambu Studio用3MFではプレートサイズを350×320、330×320、256×256（既定）、180×180 mmから選択できます。配置は各プレートの中央に寄せ、1枚に収まらない場合は複数プレートに分けます。1部品も収まらない場合はエラーを表示します。3MFはスライス前の形状と配置であり、Bambu Studioで機種・材料・印刷条件を選んでスライスしてください。形状生成は端末内のWeb Workerで実行され、モデルはサーバーへ送信されません。省データ設定またはモバイル回線などが検出された場合は、大きなデータの初回取得前に確認します。
+1. Select the target screw, pieces per batch, and number of batches.
+2. Review the live 2D or 3D preview. Advanced settings let you enter measured screw, magnet, and clearance dimensions.
+3. Select **Generate model** to run full CAD generation and download the STL, STEP, or ZIP files.
+4. For Bambu Studio, select a supported plate size, generate a 3MF, then choose the printer, material, and slicing settings in Bambu Studio.
 
-Web版の既定形状はPython版の印刷試用で見つかった課題に合わせて更新しています。クリック位置の係合とスライダーの隙間を詰め、ネジ頭を受ける穴を狭めてトレー床を薄くし、収納高さを15 mmにしました。外周は磁石・接合部の補強を残して細くし、蓋中央も肉抜きしています。接合ネジは磁石と同じ四隅の位置に移し、底面からM2×5を4本使います。Python版と同梱の生成済みモデルは従来形状のままです。
+The app has English and Japanese interfaces. It uses the browser language only until you choose a language in the app; the explicit choice is saved for future visits.
+
+## Printing and assembly
+
+The output is a four-part assembly: base, tray, slider, and lid. Print each STL in its exported orientation. To assemble, place the slider into the base from above, then secure the tray. The default screw joint uses four M2 × 5 screws; the lid can be aligned with magnets or printed pegs.
+
+Preset dimensions are design starting points, not guarantees for a screw standard. Measure the actual screws, make a small test print, and verify fit, slider operation, click stops, magnet retention, and strength before production use.
+
+## Local development
+
+Node.js and npm are required.
 
 ```sh
 cd web
 npm ci
-npm run dev
+npm test
+npm run build
 ```
 
-表示されるローカルURLを開いてください。検証には `npm test`、配布用ビルドには `npm run build` を使用します。既定モデルの形状を変更したら `npm run generate:default-preview` で事前生成アセットを更新してください。プリセットのねじ頭径は設計上の想定です。実物のねじを測り、試験版で摺動・保持・落下を確認してください。
-
-`rows`は1回に排出する本数、`columns`は列数です。M1.5／M2／M3に対応しています。
+Run `npm run dev` to start a local development server. If you change the default CAD geometry, refresh the checked-in initial preview before committing:
 
 ```sh
-# 小型の試験版
-python design_screw_counter.py --columns 2 --out test
-# クリックを弱める
-python design_screw_counter.py --columns 2 --detent-spring-width 1.0 --out light_test
+npm run generate:default-preview
 ```
 
-## ファイル
+## Repository layout
 
-- [詳細な設定・印刷・組立説明](README_ja.md)
-- [Web版の実現可能性と実装方針](docs/web-feasibility.md)
-- `design_screw_counter.py`：パラメータ設定、CAD生成、幾何学的な検証
-- `generated/`：標準M2・4×10の組立STEPと印刷用STL
-- `test/`：4×2の印刷試験版（ソフトウェアのテストスイートではありません）
-- `validation_matrix.json`：異なる設定で実施したCAD検証記録
+- `web/` — Vite, React, and TypeScript application, including browser-side CAD generation and tests.
+- `.github/workflows/web.yml` — test, build, and GitHub Pages deployment workflow.
 
-![クリック機構](ScrewCounter_detent_detail.png)
+## Verification boundary
 
-Web版の改訂形状はCAD上の保持・通過・干渉を確認しています。改訂形状の印刷・動作・クリック力・耐久性は未検証なので、まず試験版で確認してください。
+Automated tests cover settings, CAD generation, exports, preview behavior, and print-plate layout. CAD files still need to be opened in the intended slicer or CAD tool, and physical print, fit, durability, and dispensing behavior need validation on the actual printer and hardware.
