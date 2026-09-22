@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
+*.zip
+light_test/
+firm_test/
+no_detent/

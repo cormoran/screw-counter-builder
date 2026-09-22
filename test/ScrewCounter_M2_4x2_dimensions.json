@@ -1,0 +1,113 @@
+{
+  "settings": {
+    "detent": true,
+    "detent_spring_width": 1.2,
+    "rows": 4,
+    "columns": 2,
+    "screw": "M2",
+    "joint": "screws",
+    "magnet_diameter": 6.0,
+    "magnet_thickness": 2.0,
+    "magnet_diameter_clearance": 0.3,
+    "magnet_depth_clearance": 0.15,
+    "slide_clearance": 0.3,
+    "head_diameter": null,
+    "shaft_diameter": null,
+    "slot_width": null,
+    "pitch": null
+  },
+  "derived": {
+    "shaft": 2.0,
+    "head": 4.4,
+    "slot": 2.6,
+    "drop": 5.6000000000000005,
+    "window": 6.0,
+    "pitch": 8.0,
+    "rim": 10.0,
+    "wall": 8.7,
+    "sy": 9.0,
+    "release_x": 14.0,
+    "xs": [
+      22.0,
+      30.0
+    ],
+    "ys": [
+      15.5,
+      23.5,
+      31.5,
+      39.5
+    ],
+    "L": 44.3,
+    "W": 55.0,
+    "floor": 1.6,
+    "sz": 1.9000000000000001,
+    "t": 2,
+    "join_z": 4.2,
+    "deck_top": 7.2,
+    "top": 14.0,
+    "detent": {
+      "tip_x": 12.0,
+      "tip_y": 45.8,
+      "nose_radius": 1.0,
+      "notch_radius": 1.2,
+      "notch_x": [
+        12.0,
+        20.0,
+        28.0
+      ],
+      "spring_length": 15.0,
+      "spring_width": 1.2,
+      "spring_height": 2,
+      "relief_gap": 1.2,
+      "nominal_deflection": 0.5,
+      "max_lateral_deflection": 0.8,
+      "note": "Elastic interference between stops is intentional; forces not calibrated."
+    },
+    "joints": [
+      [
+        18.0,
+        4.35
+      ],
+      [
+        18.0,
+        50.65
+      ],
+      [
+        26.299999999999997,
+        4.35
+      ],
+      [
+        26.299999999999997,
+        50.65
+      ]
+    ],
+    "magnets": [
+      [
+        5.5,
+        5.5
+      ],
+      [
+        5.5,
+        49.5
+      ],
+      [
+        38.8,
+        5.5
+      ],
+      [
+        38.8,
+        49.5
+      ]
+    ],
+    "magnet_pocket_diameter": 6.3,
+    "magnet_pocket_depth": 2.15
+  },
+  "checks": [
+    "4 valid single solids; no pairwise assembly interference",
+    "Release, retention and shaft clearance verified at selected stations",
+    "Detent stations coincide with releases; inter-station contact confined to elastic nose; 0.8 mm tip travel clears rail"
+  ],
+  "physical_print_test": false,
+  "print_orientation": "STLs lie flat; lid exterior face down; no slicer supports intended",
+  "assembly_screws": "4 x M2x8; flat-underhead diameter <=4.2, height <=2.2; pilot 1.7"
+}
