@@ -4,7 +4,7 @@ import { DEFAULT_PREVIEW_CONFIRM_BYTES, DEFAULT_SETTINGS, deriveDimensions, gene
 import { createBambu3mf, type Print3mfArtifact } from './print3mf'
 import { DimensionPreview } from './components/DimensionPreview'
 import { SettingsForm } from './components/SettingsForm'
-import { SETTINGS_FIELDS } from './settings-schema'
+import { PRINT_PLATE_OPTIONS, SETTINGS_CATEGORIES, SETTINGS_FIELDS, type PrintPlateOption } from './settings-schema'
 import { currentConnectionNeedsConfirmation } from './network'
 
 type State = 'ready' | 'generating' | 'complete' | 'error'
@@ -25,6 +25,7 @@ const PART_FILES = [
 export default function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
   const [advanced, setAdvanced] = useState(false)
+  const [selectedPlateId, setSelectedPlateId] = useState<PrintPlateOption['id']>('standard')
   const [state, setState] = useState<State>('ready')
   const [status, setStatus] = useState('設定を確認してから「モデルを生成」を選んでください。')
   const [model, setModel] = useState<GeneratedModel | null>(null)
@@ -34,6 +35,7 @@ export default function App() {
   const [realtimePreview, setRealtimePreview] = useState(true)
   const [printArtifact, setPrintArtifact] = useState<Print3mfArtifact | null>(null)
   const [showPrintPreview, setShowPrintPreview] = useState(false)
+  const [previewPlateIndex, setPreviewPlateIndex] = useState(0)
   const [printState, setPrintState] = useState<PrintState>('ready')
   const [printStatus, setPrintStatus] = useState('')
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransfer | null>(null)
@@ -46,6 +48,7 @@ export default function App() {
   const hasEditedSettings = useRef(false)
   const validation = useMemo(() => validateSettings(settings).map(localizeValidation), [settings])
   const dimensions = useMemo(() => validation.length === 0 ? deriveDimensions(settings) : null, [settings, validation])
+  const selectedPlate = useMemo(() => PRINT_PLATE_OPTIONS.find((plate) => plate.id === selectedPlateId)!, [selectedPlateId])
 
   function update(key: keyof Settings, value: Settings[keyof Settings]) {
     hasEditedSettings.current = true
@@ -63,6 +66,7 @@ export default function App() {
     }
     setPrintArtifact(null)
     setShowPrintPreview(false)
+    setPreviewPlateIndex(0)
     setPrintState('ready')
     setState('ready')
   }
@@ -183,6 +187,16 @@ export default function App() {
     void buildPrint3mf()
   }
 
+  function selectPrintPlate(plateId: PrintPlateOption['id']) {
+    setSelectedPlateId(plateId)
+    printRequest.current += 1
+    setPrintArtifact(null)
+    setShowPrintPreview(false)
+    setPreviewPlateIndex(0)
+    setPrintState('ready')
+    setPrintStatus('')
+  }
+
   async function buildPrint3mf() {
     if (validation.length) return
     const request = ++printRequest.current
@@ -195,22 +209,24 @@ export default function App() {
         setPrintState('ready')
         return
       }
-      const artifact = await createBambu3mf(source)
+      const artifact = await createBambu3mf(source, { width: selectedPlate.width, depth: selectedPlate.depth })
       if (printRequest.current !== request) return
       setPrintArtifact(artifact)
       setShowPrintPreview(true)
+      setPreviewPlateIndex(0)
       setPrintState('ready')
-      setPrintStatus('Bambu Studioで開ける3MFプレビューを生成しました。')
+      setPrintStatus(`Bambu Studio用3MFを${artifact.plates.length}プレートで生成しました。`)
     } catch (error) {
       if (printRequest.current !== request) return
       setPrintState('error')
       const message = error instanceof Error ? error.message : ''
-      setPrintStatus(message.includes('print layout does not fit') ? '4部品の配置が256 × 256 mmのプレートに収まりません。取り出し回数や本数を減らしてください。' : message || '3MFファイルを生成できませんでした。')
+      setPrintStatus(message.includes('print layout does not fit') ? `部品のいずれかが${selectedPlate.label}のプレートに収まりません。取り出し回数や本数を減らすか、大きいプレートを選んでください。` : message || '3MFファイルを生成できませんでした。')
     }
   }
 
   const isPrintPreview = showPrintPreview && printArtifact !== null
-  const displayMeshes: Record<ModelPart, TriangleMesh> | null = isPrintPreview ? printArtifact.previewMeshes : preview?.partMeshes ?? model?.partMeshes ?? null
+  const printPreviewPlate = isPrintPreview ? printArtifact.plates[previewPlateIndex] : null
+  const displayMeshes: Partial<Record<ModelPart, TriangleMesh>> | null = printPreviewPlate ? printPreviewPlate.previewMeshes : preview?.partMeshes ?? model?.partMeshes ?? null
   const displayDimensions = isPrintPreview ? null : dimensions
 
   return <main className="app-shell">
@@ -225,13 +241,16 @@ export default function App() {
     <div className="tool-layout">
       <section className="panel form-panel" aria-labelledby="settings-title">
         <div className="section-heading"><h2 id="settings-title">設定</h2><span>基本</span></div>
-        <SettingsForm fields={SETTINGS_FIELDS.filter((field) => field.group === 'basic')} settings={settings} onChange={update} />
+        <SettingsForm fields={SETTINGS_FIELDS.filter((field) => field.category === 'basic')} settings={settings} onChange={update} />
         <button className="details-button" type="button" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}>
           {advanced ? '詳細設定を隠す' : '詳細設定'} <span aria-hidden="true">⌄</span>
         </button>
-        {advanced && <div className="advanced"><div className="section-heading"><h2>詳細設定</h2><span>実測値・クリアランス</span></div>
-          <SettingsForm fields={SETTINGS_FIELDS.filter((field) => field.group === 'detail')} settings={settings} onChange={update} />
-        </div>}
+        {advanced && <div className="advanced"><div className="settings-categories">
+          {SETTINGS_CATEGORIES.filter((category) => category.id !== 'basic').map((category) => <section className="settings-category" key={category.id} aria-labelledby={`settings-category-${category.id}`}>
+            <div className="category-heading"><h3 id={`settings-category-${category.id}`}>{category.label}</h3><p>{category.description}</p></div>
+            <SettingsForm fields={SETTINGS_FIELDS.filter((field) => field.category === category.id)} settings={settings} onChange={update} />
+          </section>)}
+        </div></div>}
       </section>
       <aside className="side-column">
         <section className="panel preview-panel" aria-labelledby="preview-title">
@@ -241,7 +260,8 @@ export default function App() {
             {printArtifact && <button className="preview-mode-button" type="button" onClick={() => setShowPrintPreview((value) => !value)}>{isPrintPreview ? '組立プレビューに戻る' : '印刷プレビューを表示'}</button>}
             {(!realtimePreview || previewState !== 'idle') && <p className={`preview-status ${previewState}`} role="status" aria-live="polite">{previewState === 'generating' && <span className="spinner" aria-hidden="true" />}{previewStatus}</p>}
           </div>
-          {displayMeshes ? <Suspense fallback={<div className="preview-empty">3Dプレビューを準備しています…</div>}><ModelViewer meshes={displayMeshes} {...(isPrintPreview ? { printPlateSize: printArtifact.plateSize } : {})} /></Suspense> : <DimensionPreview dimensions={dimensions} />}
+          {isPrintPreview && printArtifact.plates.length > 1 && <div className="plate-tabs" role="group" aria-label="印刷プレートを選択">{printArtifact.plates.map((plate, index) => <button key={index} type="button" aria-pressed={previewPlateIndex === index} className={previewPlateIndex === index ? 'selected' : ''} onClick={() => setPreviewPlateIndex(index)}>プレート {index + 1} <span>{plate.placements.length}部品</span></button>)}</div>}
+          {displayMeshes ? <Suspense fallback={<div className="preview-empty">3Dプレビューを準備しています…</div>}><ModelViewer meshes={displayMeshes} {...(printPreviewPlate ? { printPlateSize: { width: printPreviewPlate.width, depth: printPreviewPlate.depth } } : {})} /></Suspense> : <DimensionPreview dimensions={dimensions} />}
           {displayDimensions && <dl className="dimensions">
             <div><dt>外形</dt><dd>{fmt(displayDimensions.length)} × {fmt(displayDimensions.width)} × {fmt(displayDimensions.top)} mm</dd></div>
             <div><dt>ピッチ</dt><dd>{fmt(displayDimensions.pitch)} mm</dd></div>
@@ -259,7 +279,8 @@ export default function App() {
           {model && <DownloadArea model={model} settings={settings} />}
           <div className="print-3mf">
             <h3>Bambu Studio 用3MF</h3>
-            <p>4部品を256 mmプレートに印刷向きで配置します。Bambu Studioで機種・材料・印刷条件を選んでスライスしてください。</p>
+            <p>4部品を選択したプレートへ印刷向きで配置します。Bambu Studioで機種・材料・印刷条件を選んでスライスしてください。</p>
+            <label className="plate-select" htmlFor="print-plate-size"><span>プレートサイズ</span><select id="print-plate-size" value={selectedPlateId} disabled={printState === 'generating'} onChange={(event) => selectPrintPlate(event.target.value as PrintPlateOption['id'])}>{PRINT_PLATE_OPTIONS.map((plate) => <option key={plate.id} value={plate.id}>{plate.label}（{plate.printers}）</option>)}</select></label>
             <button className="zip-button" type="button" disabled={state === 'generating' || printState === 'generating' || validation.length > 0} onClick={requestPrint3mf}>{printState === 'generating' ? '3MFを生成中…' : '3MFを生成してプレビュー'}</button>
             {printStatus && <p className={`print-status ${printState}`} role="status" aria-live="polite">{printState === 'generating' && <span className="spinner" aria-hidden="true" />}{printStatus}</p>}
             {printArtifact && <button className="download-3mf" type="button" onClick={() => download(printArtifact.file, `ScrewCounter_${settings.screw.replace('.', 'p')}_${settings.rows}x${settings.columns}_Bambu.3mf`)}>3MFをダウンロード <span>↓</span></button>}

@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { ModelPart, TriangleMesh } from '../cad'
 
 type ViewMode = 'assembled' | 'exploded'
-type Props = { meshes: Record<ModelPart, TriangleMesh>; printPlateSize?: number }
+type Props = { meshes: Partial<Record<ModelPart, TriangleMesh>>; printPlateSize?: { width: number; depth: number } }
 
 const PARTS: readonly { id: ModelPart; label: string; color: number; offset: [number, number, number] }[] = [
   { id: 'base', label: 'ベース', color: 0x64748b, offset: [-8, -7, -4] },
@@ -55,16 +55,17 @@ export function ModelViewer({ meshes, printPlateSize }: Props) {
     const bounds = new THREE.Box3()
     let plate: THREE.Mesh | undefined
     if (printPlateSize) {
-      const geometry = new THREE.BoxGeometry(printPlateSize, printPlateSize, 0.8)
+      const geometry = new THREE.BoxGeometry(printPlateSize.width, printPlateSize.depth, 0.8)
       const material = new THREE.MeshStandardMaterial({ color: 0xe5e9ef, roughness: 0.95, metalness: 0.02 })
       plate = new THREE.Mesh(geometry, material)
-      plate.position.set(printPlateSize / 2, printPlateSize / 2, -1)
+      plate.position.set(printPlateSize.width / 2, printPlateSize.depth / 2, -1)
       group.add(plate)
       bounds.expandByPoint(new THREE.Vector3(0, 0, -1.4))
-      bounds.expandByPoint(new THREE.Vector3(printPlateSize, printPlateSize, 0))
+      bounds.expandByPoint(new THREE.Vector3(printPlateSize.width, printPlateSize.depth, 0))
     }
     PARTS.forEach((part) => {
       const mesh = meshes[part.id]
+      if (!mesh) return
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3))
       geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 3))
@@ -129,7 +130,7 @@ export function ModelViewer({ meshes, printPlateSize }: Props) {
       <output>{separation}%</output>
     </label>}
     {webglUnavailable ? <div className="viewer-fallback">このブラウザでは3Dプレビューを表示できません。ダウンロードしたSTLまたはSTEPをご利用ください。</div> : <div className="viewer-canvas" ref={host} aria-label={printPlateSize ? '印刷プレート上の配置を回転・移動・ズームできる3Dプレビュー' : 'マウスまたはタッチ操作で回転とズームができる3Dプレビュー'} />}
-    <div className="part-legend" aria-label="パーツの色"><span className="base">ベース</span><span className="tray">トレー</span><span className="slider">スライダー</span><span className="lid">ふた</span></div>
-    <p className="viewer-help">{printPlateSize ? `${printPlateSize} × ${printPlateSize} mmプレート。` : ''}ドラッグで回転、右ドラッグまたは2本指で移動、ホイールまたはピンチで拡大・縮小</p>
+    <div className="part-legend" aria-label="パーツの色">{PARTS.filter(({ id }) => Boolean(meshes[id])).map(({ id, label }) => <span key={id} className={id}>{label}</span>)}</div>
+    <p className="viewer-help">{printPlateSize ? `${printPlateSize.width} × ${printPlateSize.depth} mmプレート。` : ''}ドラッグで回転、右ドラッグまたは2本指で移動、ホイールまたはピンチで拡大・縮小</p>
   </div>
 }
