@@ -30,6 +30,11 @@ const gussetXZ = (points: Array<[number, number]>, y: number, width: number): Sh
   for (const point of points.slice(1)) sketch.lineTo(point);
   return sketch.close().extrude(-width);
 };
+const prismYZ = (points: Array<[number, number]>, x: number, length: number): Shape3D => {
+  const sketch = new Sketcher("YZ", [x, 0, 0]).movePointerTo(points[0]);
+  for (const point of points.slice(1)) sketch.lineTo(point);
+  return sketch.close().extrude(length);
+};
 
 type CachedCadPart = { key: string; shape: Shape3D; mesh: TriangleMesh; meshTolerance: number; diagnostic: PartDiagnostic; stl?: Blob };
 const partCache: Partial<Record<"base" | "tray" | "slider" | "lid", CachedCadPart>> = {};
@@ -98,11 +103,13 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const handleExtraThickness = 0.8;
   const drainY = d.width / 2 - 6;
   const drainWidth = 12;
+  const drainChamfer = 3;
+  const drainLipClearance = 0.2;
   const handleRibRootX = storageHandleX - 0.4;
   const handleRibRun = 3.2;
   const handleRibBaseZ = d.deckTop + handleExtraThickness;
-  const handleRibWidth = 3;
-  const handleRibYs = [storageHandleY + 1, storageHandleY + storageHandleWidth - handleRibWidth - 1];
+  const handleRibY = storageHandleY + 1;
+  const handleRibWidth = storageHandleWidth - 2;
   if (!tray) {
     tray = rounded(0, 0, d.joinZ, d.length, d.width, d.deckThickness, 4);
     let rim = rounded(0, 0, d.deckTop, d.length, d.width, d.top - d.deckTop, 4)
@@ -116,15 +123,25 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       // Open only the upper rim: the continuous deck remains the runway that
       // guides a screw to the front discharge opening.
       .cut(box(-0.1, drainY, d.deckTop - 0.1, frameWall + 0.2, drainWidth, d.top - d.deckTop + 0.2));
-    // Two short ribs carry the hanging load from the handle into the tray's
-    // rear wall. Stop before the hook opening, and leave its middle unobstructed.
-    for (const ribY of handleRibYs) {
-      tray = tray.fuse(gussetXZ([
-        [handleRibRootX, handleRibBaseZ],
-        [handleRibRootX, handleRibBaseZ + handleRibRun],
-        [handleRibRootX + handleRibRun, handleRibBaseZ],
-      ], ribY, handleRibWidth));
-    }
+    // Flare the lid-facing upper corners of the opening with broad 45-degree
+    // chamfers. The deck and the lower straight sides remain in place.
+    tray = tray
+      .cut(prismYZ([
+        [drainY, d.top - drainChamfer],
+        [drainY, d.top + 0.1],
+        [drainY - drainChamfer - 0.1, d.top + 0.1],
+      ], -0.1, frameWall + 0.2))
+      .cut(prismYZ([
+        [drainY + drainWidth, d.top - drainChamfer],
+        [drainY + drainWidth + drainChamfer + 0.1, d.top + 0.1],
+        [drainY + drainWidth, d.top + 0.1],
+      ], -0.1, frameWall + 0.2));
+    // A single rib supports the full handle root and stops before the hook hole.
+    tray = tray.fuse(gussetXZ([
+      [handleRibRootX, handleRibBaseZ],
+      [handleRibRootX, handleRibBaseZ + handleRibRun],
+      [handleRibRootX + handleRibRun, handleRibBaseZ],
+    ], handleRibY, handleRibWidth));
     for (const x of d.screwXs) for (const y of d.screwYs) {
       tray = tray.cut(cylinder(x, y, d.joinZ - 0.1, d.drop / 2, d.deckThickness + 0.2));
       tray = tray.cut(cone(x, y, d.deckTop - 0.3, d.drop / 2, d.drop / 2 + TRAY_ENTRY_RADIAL_FLARE, 0.3));
@@ -165,6 +182,19 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     // The plug keys into the tray's front rim cutout with 0.2 mm lateral
     // clearance. It reaches the deck so a closed lid cannot let screws escape.
     lid = lid.fuse(rounded(0.1, drainY + 0.1, d.deckTop, frameWall - 0.2, drainWidth - 0.2, d.top - d.deckTop + 0.1, 0.5));
+    // Matching tapered lips fill the newly chamfered corners without touching
+    // the tray. They overlap the plug slightly for a continuous printable body.
+    lid = lid
+      .fuse(prismYZ([
+        [drainY + 0.3, d.top - drainChamfer + 0.3],
+        [drainY + 0.3, d.top + 0.1],
+        [drainY - drainChamfer + drainLipClearance, d.top + 0.1],
+      ], 0.1, frameWall - 0.2))
+      .fuse(prismYZ([
+        [drainY + drainWidth - 0.3, d.top - drainChamfer + 0.3],
+        [drainY + drainWidth + drainChamfer - drainLipClearance, d.top + 0.1],
+        [drainY + drainWidth - 0.3, d.top + 0.1],
+      ], 0.1, frameWall - 0.2));
     // Brace the long discharge plug from the underside of the lid, inside the
     // tray opening. The 45-degree face meets the plug without extending the lid
     // past its front edge or reaching the first screw station.
@@ -250,18 +280,31 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   }
   completed.push("Tray and slider storage handles retain reinforced thickness");
   const handleRibProbeX = handleRibRootX + handleRibRun / 2;
-  for (const ribY of handleRibYs) {
-    const probeY = ribY + handleRibWidth / 2;
+  for (const probeY of [handleRibY + 1.5, handleCenterY, handleRibY + handleRibWidth - 1.5]) {
     if (intersectionVolume(tray, cylinder(handleRibProbeX, probeY, handleRibBaseZ + 0.8, 0.12, 0.12)) < 0.003 ||
         intersectionVolume(tray, cylinder(handleRibProbeX, probeY, handleRibBaseZ + 2.4, 0.12, 0.12)) >= 1e-5) {
-      throw new Error("Tray storage handle must retain its two 45-degree root ribs");
+      throw new Error("Tray storage handle must retain its full-width 45-degree root rib");
     }
   }
-  completed.push("Tray storage handle retains two 45-degree root ribs");
+  completed.push("Tray storage handle retains its full-width 45-degree root rib");
   const drainProbe = cylinder(frameWall / 2, d.width / 2, d.deckTop + 0.2, 0.3, 0.5);
   if (intersectionVolume(tray, drainProbe) >= 1e-5 || intersectionVolume(lid, drainProbe) < 0.05) {
     throw new Error("Tray discharge cutout or closed-lid retention plug is missing");
   }
+  for (const side of [-1, 1]) {
+    const edgeY = side < 0 ? drainY : drainY + drainWidth;
+    const lipY = edgeY + side * 1.4;
+    const clearanceY = edgeY + side * 2.1;
+    const lipProbe = cylinder(frameWall / 2, lipY, d.top - 0.75, 0.12, 0.12);
+    const clearanceProbe = cylinder(frameWall / 2, clearanceY, d.top - 0.75, 0.12, 0.12);
+    const lowerRimProbe = cylinder(frameWall / 2, lipY, d.top - drainChamfer - 0.4, 0.12, 0.12);
+    if (intersectionVolume(tray, lipProbe) >= 1e-5 || intersectionVolume(lid, lipProbe) < 0.003 ||
+        intersectionVolume(tray, clearanceProbe) >= 1e-5 || intersectionVolume(lid, clearanceProbe) >= 1e-5 ||
+        intersectionVolume(tray, lowerRimProbe) < 0.003 || intersectionVolume(lid, lowerRimProbe) >= 1e-5) {
+      throw new Error("Discharge cutout must retain broad upper chamfers and matching clearance-fit lid lips");
+    }
+  }
+  completed.push("Discharge cutout upper chamfers and matching lid lips verified");
   const gussetY = d.width / 2;
   const gussetMiddleX = gussetPlugX + gussetRun / 2;
   const gussetMaterial = cylinder(gussetMiddleX, gussetY, d.top - 1.75, 0.12, 0.12);

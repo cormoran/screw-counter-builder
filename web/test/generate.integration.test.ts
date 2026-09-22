@@ -34,7 +34,8 @@ describe("browser CAD integration", () => {
     expect(model.verification.completed).toContain("Overlapping storage handles, closed-lid discharge plug, and 45-degree internal gusset verified");
     expect(model.diagnostics.lid.bounds.min[0]).toBeGreaterThan(-1e-5);
     expect(model.verification.completed).toContain("Tray and slider storage handles retain reinforced thickness");
-    expect(model.verification.completed).toContain("Tray storage handle retains two 45-degree root ribs");
+    expect(model.verification.completed).toContain("Tray storage handle retains its full-width 45-degree root rib");
+    expect(model.verification.completed).toContain("Discharge cutout upper chamfers and matching lid lips verified");
     expect(model.verification.completed).toContain("Coaxial corner fasteners and magnet pockets remain vertically separated");
     expect(model.dimensions.joints).toEqual(model.dimensions.magnets);
     expect(model.verification.completed).toContain("Assembly screw counterbore retains its head seat and 45-degree roof");
