@@ -23,15 +23,21 @@ function manifestUrl() {
 
 /** Read the small manifest before deciding whether a connection confirmation is needed. */
 export function getDefaultPreviewInfo(): Promise<DefaultPreviewInfo> {
-  return (infoPromise ??= fetch(manifestUrl()).then(async (response) => {
+  if (infoPromise) return infoPromise
+  infoPromise = fetch(manifestUrl()).then(async (response) => {
     if (!response.ok) throw new Error(`Default preview manifest download failed (${response.status})`)
     return response.json() as Promise<DefaultPreviewInfo>
-  }))
+  }).catch((error: unknown) => {
+    infoPromise = undefined
+    throw error
+  })
+  return infoPromise
 }
 
 /** Download and parse the pre-generated assembly meshes off the UI thread. */
 export function loadDefaultPreview(): Promise<Record<ModelPart, TriangleMesh>> {
-  return (meshPromise ??= new Promise((resolve, reject) => {
+  if (meshPromise) return meshPromise
+  meshPromise = new Promise<Record<ModelPart, TriangleMesh>>((resolve, reject) => {
     const worker = new Worker(new URL('./default-preview-worker-entry.ts', import.meta.url), { type: 'module' })
     const finish = () => worker.terminate()
     worker.onmessage = (event: MessageEvent<Reply>) => {
@@ -40,5 +46,9 @@ export function loadDefaultPreview(): Promise<Record<ModelPart, TriangleMesh>> {
     }
     worker.onerror = (event) => { finish(); reject(new Error(event.message || 'Default preview worker failed')) }
     worker.postMessage({ manifestUrl: manifestUrl() })
-  }))
+  }).catch((error: unknown) => {
+    meshPromise = undefined
+    throw error
+  })
+  return meshPromise
 }
