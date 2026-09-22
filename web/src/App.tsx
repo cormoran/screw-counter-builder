@@ -295,7 +295,7 @@ export default function App() {
 
 function DownloadArea({ model, settings }: { model: GeneratedModel; settings: Settings }) {
   const prefix = `ScrewCounter_${settings.screw.replace('.', 'p')}_${settings.rows}x${settings.columns}`
-  const visibleWarnings = model.warnings.filter((warning) => warning !== 'Browser CAD output has not been compared against the Python B-Rep baseline or physically print-tested.')
+  const visibleWarnings = model.warnings
   async function downloadAll() {
     const zip = new JSZip()
     Object.entries(model.files).forEach(([name, file]) => zip.file(`${prefix}_${name}`, file))
@@ -346,9 +346,6 @@ function localizeProgress(message?: string) {
 }
 
 function localizeWarning(message: string) {
-  if (message === 'Browser CAD output has not been compared against the Python B-Rep baseline or physically print-tested.') {
-    return 'Python版のB-Repとの詳細比較と、印刷・実機での確認は未実施です。'
-  }
   return message
 }
 

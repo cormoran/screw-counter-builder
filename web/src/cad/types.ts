@@ -72,6 +72,7 @@ export interface DerivedDimensions {
   sliderZ: number;
   sliderThickness: number;
   joinZ: number;
+  deckThickness: number;
   deckTop: number;
   screwSpaceHeight: number;
   top: number;
