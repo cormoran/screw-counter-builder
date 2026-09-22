@@ -53,6 +53,7 @@ describe("browser CAD integration", () => {
     expect(model.verification.completed).toContain("Coaxial corner fasteners and magnet pockets remain vertically separated");
     expect(model.dimensions.joints).toEqual(model.dimensions.magnets);
     expect(model.verification.completed).toContain("Assembly screw counterbore retains its head seat and 45-degree roof");
+    expect(model.verification.completed).toContain("Tray drop holes retain square straight openings");
     expect(model.verification.completed).toContain("Tapered registration lands and sockets retain 45-degree printable faces");
     expect(model.dimensions.screwSpaceHeight).toBe(15);
     expect(model.dimensions.deckThickness).toBe(0.75);
