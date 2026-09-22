@@ -142,7 +142,7 @@ function meshBounds(mesh: TriangleMesh): Bounds {
 }
 
 function modelXml(parts: readonly PreparedPart[], placements: readonly PrintPartPlacement[], plate: BambuPlateSize, plateCount: number): string {
-  const resources = parts.map(({ part, mesh }, index) => `<object id="${index + 1}" type="model" name="${PART_NAMES[part]}"><mesh><vertices>${Array.from({ length: mesh.positions.length / 3 }, (_, vertex) => { const offset = vertex * 3; return `<vertex x="${number(mesh.positions[offset])}" y="${number(mesh.positions[offset + 1])}" z="${number(mesh.positions[offset + 2])}"/>` }).join('')}</vertices><triangles>${Array.from({ length: mesh.indices.length / 3 }, (_, triangle) => { const offset = triangle * 3; return `<triangle v1="${mesh.indices[offset]}" v2="${mesh.indices[offset + 1]}" v3="${mesh.indices[offset + 2]}"/>` }).join('')}</triangles></mesh></object>`).join('')
+  const resources = parts.map(({ part, mesh }, index) => `<object id="${index + 1}" type="model" name="${PART_NAMES[part]}">${meshXml(mesh)}</object>`).join('')
   const cols = Math.ceil(Math.sqrt(plateCount))
   const build = placements.map((placement) => {
     const source = parts.find(({ part }) => part === placement.part)!
@@ -151,6 +151,36 @@ function modelXml(parts: readonly PreparedPart[], placements: readonly PrintPart
     return `<item objectid="${PRINT_PARTS.indexOf(placement.part) + 1}" transform="1 0 0 0 1 0 0 0 1 ${number(placement.x - source.bounds.min[0] + gridX)} ${number(placement.y - source.bounds.min[1] + gridY)} ${number(-source.bounds.min[2])}"/>`
   }).join('')
   return `<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Title">Screw Counter print plates</metadata><metadata name="Application">BambuStudio-02.08.02.60</metadata><metadata name="BambuStudio:3mfVersion">1</metadata><resources>${resources}</resources><build>${build}</build></model>`
+}
+
+/** STL repeats every triangle's vertices; 3MF needs shared vertex indices for a connected solid. */
+function meshXml(mesh: TriangleMesh): string {
+  const vertices: string[] = []
+  const triangles: string[] = []
+  const vertexIds = new Map<string, number>()
+  for (let triangle = 0; triangle < mesh.indices.length; triangle += 3) {
+    const coordinates = [0, 1, 2].map((corner) => {
+      const offset = mesh.indices[triangle + corner] * 3
+      return [number(mesh.positions[offset]), number(mesh.positions[offset + 1]), number(mesh.positions[offset + 2])]
+    })
+    const keys = coordinates.map((point) => point.join(','))
+    // OpenCascade's STL can contain seam triangles with repeated vertices. They do not
+    // contribute to the solid and can make a 3MF mesh non-manifold.
+    if (new Set(keys).size !== 3) continue
+    const ids = coordinates.map(([x, y, z], corner) => {
+      const key = keys[corner]
+      let id = vertexIds.get(key)
+      if (id === undefined) {
+        id = vertices.length
+        vertexIds.set(key, id)
+        vertices.push(`<vertex x="${x}" y="${y}" z="${z}"/>`)
+      }
+      return id
+    })
+    triangles.push(`<triangle v1="${ids[0]}" v2="${ids[1]}" v3="${ids[2]}"/>`)
+  }
+  if (!triangles.length) throw new Error('Print mesh has no non-degenerate triangles')
+  return `<mesh><vertices>${vertices.join('')}</vertices><triangles>${triangles.join('')}</triangles></mesh>`
 }
 
 function modelSettingsXml(placements: readonly PrintPartPlacement[]): string {

@@ -10,11 +10,15 @@ const triangle = (offset: number): TriangleMesh => ({
 })
 
 function binaryStl(mesh: TriangleMesh): Blob {
-  const bytes = new ArrayBuffer(84 + 50)
+  const triangles = mesh.positions.length / 9
+  const bytes = new ArrayBuffer(84 + 50 * triangles)
   const view = new DataView(bytes)
-  view.setUint32(80, 1, true)
-  view.setFloat32(84, 0, true); view.setFloat32(88, 0, true); view.setFloat32(92, 1, true)
-  for (let vertex = 0; vertex < 3; vertex += 1) for (let axis = 0; axis < 3; axis += 1) view.setFloat32(96 + vertex * 12 + axis * 4, mesh.positions[vertex * 3 + axis], true)
+  view.setUint32(80, triangles, true)
+  for (let triangle = 0; triangle < triangles; triangle += 1) {
+    const source = triangle * 9; const target = 84 + triangle * 50
+    for (let axis = 0; axis < 3; axis += 1) view.setFloat32(target + axis * 4, mesh.normals[source + axis], true)
+    for (let vertex = 0; vertex < 3; vertex += 1) for (let axis = 0; axis < 3; axis += 1) view.setFloat32(target + 12 + vertex * 12 + axis * 4, mesh.positions[source + vertex * 3 + axis], true)
+  }
   return new Blob([bytes], { type: 'model/stl' })
 }
 
@@ -25,6 +29,23 @@ const model = {
 } as GeneratedModel
 
 describe('Bambu 3MF export', () => {
+  it('shares coincident vertices and omits degenerate STL facets', async () => {
+    const positions = new Float32Array([
+      0, 0, 0, 10, 0, 0, 0, 10, 0,
+      10, 0, 0, 10, 10, 0, 0, 10, 0,
+      0, 0, 0, 0, 0, 0, 10, 0, 0,
+    ])
+    const square = { positions, normals: new Float32Array(positions.length), indices: Uint32Array.from({ length: 9 }, (_, index) => index) }
+    const source = { ...model, files: { ...model.files, 'tray.stl': binaryStl(square) } } as GeneratedModel
+    const artifact = await createBambu3mf(source)
+    const xml = await (await JSZip.loadAsync(artifact.file)).file('3D/3dmodel.model')!.async('text')
+    const tray = xml.match(/<object id="2"[\s\S]*?<\/object>/)![0]
+    expect(tray.match(/<vertex /g)).toHaveLength(4)
+    expect(tray.match(/<triangle /g)).toHaveLength(2)
+    const faces = [...tray.matchAll(/<triangle v1="(\d+)" v2="(\d+)" v3="(\d+)"\/>/g)].map((match) => match.slice(1).map(Number))
+    expect(faces[0].filter((vertex) => faces[1].includes(vertex))).toHaveLength(2)
+  })
+
   it('creates a Bambu project with a centered Core 3MF build layout', async () => {
     const artifact = await createBambu3mf(model, { width: 64, depth: 64 })
     expect(artifact.plates).toHaveLength(1)

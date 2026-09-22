@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { generateModel } from "../src/cad/generate";
 import { createBambu3mf } from "../src/print3mf";
+import JSZip from "jszip";
 
 // Vite turns ?url into a browser URL. Use the installed WASM path for this
 // Node/Vitest integration probe; production code keeps the Vite asset URL.
@@ -55,9 +56,23 @@ describe("browser CAD integration", () => {
     expect(model.files["assembly.step"].size).toBeGreaterThan(0);
     expect(model.dimensions.screwXs).toHaveLength(settings.columns);
     expect(model.dimensions.screwYs).toHaveLength(settings.rows);
+    const print = await createBambu3mf(model);
+    expect(print.placements).toHaveLength(4);
+    expect(print.file.size).toBeGreaterThan(0);
+    const archive = await JSZip.loadAsync(print.file);
+    const xml = await archive.file("3D/3dmodel.model")!.async("text");
+    for (const partId of [1, 2, 3, 4]) {
+      const part = xml.match(new RegExp(`<object id="${partId}"[\\s\\S]*?<\\/object>`))![0];
+      const faces = [...part.matchAll(/<triangle v1="(\d+)" v2="(\d+)" v3="(\d+)"\/>/g)].map((match) => match.slice(1).map(Number));
+      const edgeCounts = new Map<string, number>();
+      for (const [a, b, c] of faces) for (const [start, end] of [[a, b], [b, c], [c, a]]) {
+        const key = `${Math.min(start, end)},${Math.max(start, end)}`;
+        edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1);
+      }
+      expect(part.match(/<vertex /g)!.length).toBeLessThan(faces.length * 3);
+      expect([...edgeCounts.values()].every((count) => count === 2)).toBe(true);
+    }
     if (settings.columns === 10) {
-      const print = await createBambu3mf(model);
-      expect(print.placements).toHaveLength(4);
       expect(print.file.size).toBeGreaterThan(100_000);
       const mini = await createBambu3mf(model, { width: 180, depth: 180 });
       expect(mini.plates.length).toBeGreaterThan(1);
