@@ -3,8 +3,9 @@ import JSZip from 'jszip'
 import { DEFAULT_PREVIEW_CONFIRM_BYTES, DEFAULT_SETTINGS, deriveDimensions, generateModel, generatePreviewModel, getDefaultPreviewInfo, loadDefaultPreview, validateSettings, type GeneratedModel, type ModelPart, type PreviewModel, type Settings, type TriangleMesh } from './cad'
 import { createBambu3mf, type Print3mfArtifact } from './print3mf'
 import { DimensionPreview } from './components/DimensionPreview'
-import type { ViewMode } from './components/ModelViewer'
+import type { ViewMode, ViewerCameraState } from './components/ModelViewer'
 import { SettingsForm } from './components/SettingsForm'
+import { differsFromDefaults, loadRealtimePreview, loadSettings, loadViewMode, saveRealtimePreview, saveSettings, saveViewMode } from './settings-session'
 import { PRINT_PLATE_OPTIONS, SETTINGS_CATEGORIES, SETTINGS_FIELDS, type PrintPlateOption } from './settings-schema'
 import { currentConnectionNeedsConfirmation } from './network'
 import './styles/preview.css'
@@ -25,7 +26,7 @@ const PART_FILES = [
 ] as const
 
 export default function App() {
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
+  const [settings, setSettings] = useState<Settings>(loadSettings)
   const [advanced, setAdvanced] = useState(false)
   const [selectedPlateId, setSelectedPlateId] = useState<PrintPlateOption['id']>('standard')
   const [state, setState] = useState<State>('ready')
@@ -34,10 +35,10 @@ export default function App() {
   const [preview, setPreview] = useState<PreviewModel | null>(null)
   const [previewState, setPreviewState] = useState<PreviewState>('idle')
   const [previewStatus, setPreviewStatus] = useState('事前生成プレビューを読み込んでいます…')
-  const [realtimePreview, setRealtimePreview] = useState(true)
+  const [realtimePreview, setRealtimePreview] = useState(loadRealtimePreview)
   const [printArtifact, setPrintArtifact] = useState<Print3mfArtifact | null>(null)
   const [showPrintPreview, setShowPrintPreview] = useState(false)
-  const [previewMode, setPreviewMode] = useState<ViewMode>('2d')
+  const [previewMode, setPreviewMode] = useState<ViewMode>(loadViewMode)
   const [previewPlateIndex, setPreviewPlateIndex] = useState(0)
   const [printState, setPrintState] = useState<PrintState>('ready')
   const [printStatus, setPrintStatus] = useState('')
@@ -48,21 +49,29 @@ export default function App() {
   const [previewRetry, setPreviewRetry] = useState(0)
   const wasmApproved = useRef(false)
   const previewApproved = useRef(false)
-  const hasEditedSettings = useRef(false)
+  const hasEditedSettings = useRef(differsFromDefaults(settings))
+  const assemblyCamera = useRef<ViewerCameraState | null>(null)
+  const printCamera = useRef<ViewerCameraState | null>(null)
   const validation = useMemo(() => validateSettings(settings).map(localizeValidation), [settings])
   const dimensions = useMemo(() => validation.length === 0 ? deriveDimensions(settings) : null, [settings, validation])
   const selectedPlate = useMemo(() => PRINT_PLATE_OPTIONS.find((plate) => plate.id === selectedPlateId)!, [selectedPlateId])
 
+  useEffect(() => { saveViewMode(previewMode) }, [previewMode])
+  useEffect(() => { saveRealtimePreview(realtimePreview) }, [realtimePreview])
+
   function update(key: keyof Settings, value: Settings[keyof Settings]) {
     hasEditedSettings.current = true
+    const next = { ...settings, [key]: value }
+    saveSettings(next)
     generation.current?.abort()
     previewGeneration.current?.abort()
     printRequest.current += 1
-    setSettings((current) => ({ ...current, [key]: value }))
+    setSettings(next)
     setModel(null)
-    if (!realtimePreview) {
+    if (!realtimePreview || previewMode === '2d') {
       setPreview(null)
-      setPreviewStatus('リアルタイムプレビューはオフです。')
+      setPreviewState('idle')
+      setPreviewStatus(!realtimePreview ? 'リアルタイムプレビューはオフです。' : '2Dプレビューを更新しました。3Dは表示時に生成します。')
     } else {
       setPreviewState('generating')
       setPreviewStatus('設定の変更をプレビューに反映しています…')
@@ -87,6 +96,12 @@ export default function App() {
     }
     if (!realtimePreview) {
       setPreviewState('idle')
+      setPreviewStatus('リアルタイムプレビューはオフです。')
+      return
+    }
+    if (previewMode === '2d') {
+      setPreviewState('idle')
+      setPreviewStatus('2Dプレビューを更新しました。3Dは表示時に生成します。')
       return
     }
     const controller = new AbortController()
@@ -120,9 +135,10 @@ export default function App() {
       window.clearTimeout(timeout)
       controller.abort()
     }
-  }, [previewRetry, realtimePreview, settings, validation.length])
+  }, [previewRetry, previewMode, realtimePreview, settings, validation.length])
 
   async function loadInitialPreview() {
+    if (hasEditedSettings.current) return
     try {
       const info = await getDefaultPreviewInfo()
       if (currentConnectionNeedsConfirmation() && info.rawBytes > DEFAULT_PREVIEW_CONFIRM_BYTES && !previewApproved.current) {
@@ -230,7 +246,8 @@ export default function App() {
   const isPrintPreview = showPrintPreview && printArtifact !== null
   const printPreviewPlate = isPrintPreview ? printArtifact.plates[previewPlateIndex] : null
   const displayMeshes: Partial<Record<ModelPart, TriangleMesh>> | null = printPreviewPlate ? printPreviewPlate.previewMeshes : preview?.partMeshes ?? model?.partMeshes ?? null
-  const displayDimensions = isPrintPreview ? null : dimensions
+  const displayDimensions = isPrintPreview ? null : preview?.dimensions ?? model?.dimensions ?? dimensions
+  const shownDimensions = !isPrintPreview && previewMode === '2d' ? dimensions : displayDimensions
 
   return <main className="app-shell">
     <header className="tool-header">
@@ -270,11 +287,11 @@ export default function App() {
             <button className={previewMode === '2d' ? 'selected' : ''} type="button" onClick={() => setPreviewMode('2d')} aria-pressed={previewMode === '2d'}>2D</button>
           </div>}
           {isPrintPreview && printArtifact.plates.length > 1 && <div className="plate-tabs" role="group" aria-label="印刷プレートを選択">{printArtifact.plates.map((plate, index) => <button key={index} type="button" aria-pressed={previewPlateIndex === index} className={previewPlateIndex === index ? 'selected' : ''} onClick={() => setPreviewPlateIndex(index)}>プレート {index + 1} <span>{plate.placements.length}部品</span></button>)}</div>}
-          {displayMeshes ? <Suspense fallback={<div className="preview-empty">3Dプレビューを準備しています…</div>}><ModelViewer meshes={displayMeshes} dimensions={isPrintPreview ? null : previewMode === '2d' ? dimensions : displayDimensions} mode={printPreviewPlate ? 'assembled' : previewMode} {...(printPreviewPlate ? { printPlateSize: { width: printPreviewPlate.width, depth: printPreviewPlate.depth } } : {})} /></Suspense> : <DimensionPreview dimensions={dimensions} />}
-          {displayDimensions && <dl className="dimensions">
-            <div><dt>外形</dt><dd>{fmt(displayDimensions.length)} × {fmt(displayDimensions.width)} × {fmt(displayDimensions.top)} mm</dd></div>
-            <div><dt>ピッチ</dt><dd>{fmt(displayDimensions.pitch)} mm</dd></div>
-            <div><dt>収容本数</dt><dd>{settings.rows * settings.columns} 本</dd></div>
+          {displayMeshes ? <Suspense fallback={<div className="preview-empty">3Dプレビューを準備しています…</div>}><ModelViewer meshes={displayMeshes} dimensions={isPrintPreview ? null : previewMode === '2d' ? dimensions : displayDimensions} mode={printPreviewPlate ? 'assembled' : previewMode} cameraState={printPreviewPlate ? printCamera : assemblyCamera} {...(printPreviewPlate ? { printPlateSize: { width: printPreviewPlate.width, depth: printPreviewPlate.depth } } : {})} /></Suspense> : <DimensionPreview dimensions={dimensions} />}
+          {shownDimensions && <dl className="dimensions">
+            <div><dt>外形</dt><dd>{fmt(shownDimensions.length)} × {fmt(shownDimensions.width)} × {fmt(shownDimensions.top)} mm</dd></div>
+            <div><dt>ピッチ</dt><dd>{fmt(shownDimensions.pitch)} mm</dd></div>
+            <div><dt>収容本数</dt><dd>{shownDimensions.screwXs.length * shownDimensions.screwYs.length} 本</dd></div>
           </dl>}
         </section>
         <section className="panel generate-panel" aria-labelledby="generate-title">
