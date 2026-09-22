@@ -51,6 +51,10 @@ export function validateSettings(input: SettingsInput = {}): string[] {
     errors.push("Magnet clearance is outside the supported range");
   }
   if (settings.detentSpringWidth < 1 || settings.detentSpringWidth > 1.5) errors.push("detentSpringWidth must be 1.0..1.5 mm");
+  // The short corner screw stops below the magnet pocket, even at minimum height.
+  const deckTop = 1.6 + 2 * settings.slideClearance + 2 + 1.6;
+  const magnetPocketBottom = deckTop + settings.screwSpaceHeight + 1.2 - settings.magnetThickness - settings.magnetDepthClearance;
+  if (settings.joint === "screws" && magnetPocketBottom < 7.8) errors.push("Need at least 0.5 mm between the corner screw and magnet pocket; increase screw space height or use a thinner magnet");
   if (!preset) return errors;
   const numericValues = [
     settings.screwSpaceHeight, settings.magnetDiameter, settings.magnetThickness, settings.magnetDiameterClearance,

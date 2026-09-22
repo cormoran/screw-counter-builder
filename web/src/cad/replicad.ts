@@ -69,9 +69,8 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const frameWall = 2.4;
   let rim = rounded(0, 0, d.deckTop, d.length, d.width, d.top - d.deckTop, 4)
     .cut(rounded(frameWall, frameWall, d.deckTop - 0.1, d.length - 2 * frameWall, d.width - 2 * frameWall, d.top - d.deckTop + 0.2, 1.6));
-  // Retain material at the magnets and the four assembly screw bosses.
+  // One reinforced corner carries each magnet above its assembly screw.
   for (const p of d.magnets) rim = rim.fuse(cylinder(p.x, p.y, d.deckTop, d.magnetPocketDiameter / 2 + 1.3, d.top - d.deckTop));
-  for (const p of d.joints) rim = rim.fuse(cylinder(p.x, p.y, d.deckTop, 2.8, d.top - d.deckTop));
   tray = tray.fuse(rim);
   for (const x of d.screwXs) for (const y of d.screwYs) {
     tray = tray.cut(cylinder(x, y, d.joinZ - 0.1, d.drop / 2, d.deckThickness + 0.2));
@@ -79,7 +78,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   }
   for (const p of d.joints) {
     tray = tray.cut(cylinder(p.x, p.y, d.joinZ - 0.05, 2.2, 1.5));
-    if (settings.joint === "screws") tray = tray.cut(cylinder(p.x, p.y, d.joinZ + 1.4, 0.85, 5.6));
+    if (settings.joint === "screws") tray = tray.cut(cylinder(p.x, p.y, d.joinZ + 1.4, 0.85, 2));
   }
   options.onProgress?.({ phase: "building", completed: 2, total: 4, message: "Built tray" });
   const sw = d.width - 2 * d.sliderInsetY;
@@ -148,13 +147,21 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   for (const magnet of d.magnets) {
     const fittedMagnet = cylinder(magnet.x, magnet.y, d.top - d.magnetPocketDepth, settings.magnetDiameter / 2, settings.magnetThickness);
     if (intersectionVolume(tray, fittedMagnet) >= 1e-5 || intersectionVolume(lid, fittedMagnet.clone().translate(0, 0, d.magnetPocketDepth)) >= 1e-5) throw new Error("Magnet pocket does not clear its nominal magnet");
-    for (const joint of d.joints) if (Math.hypot(magnet.x - joint.x, magnet.y - joint.y) <= d.magnetPocketDiameter / 2 + 2.8) throw new Error("Magnet pocket is too close to a registration boss");
   }
-  completed.push("Magnet pockets and registration-boss clearance verified");
+  if (d.joints.some((joint, index) => joint.x !== d.magnets[index].x || joint.y !== d.magnets[index].y)) throw new Error("Corner fasteners are not aligned with the magnets");
+  if (settings.joint === "screws") {
+    const screwTip = 2.3 + 5;
+    if (d.top - d.magnetPocketDepth - screwTip < 0.5) throw new Error("Corner screw reaches the magnet pocket");
+    const p = d.joints[0];
+    if (intersectionVolume(tray, cylinder(p.x, p.y, d.joinZ + 1.5, 0.3, 1.7)) >= 1e-5 ||
+        intersectionVolume(tray, cylinder(p.x, p.y, d.joinZ + 3.6, 0.3, 0.25)) < 0.05) {
+      throw new Error("Corner screw pilot must be blind below the magnet pocket");
+    }
+  }
+  completed.push("Coaxial corner fasteners and magnet pockets remain vertically separated");
   const frameSpan = cylinder(d.length / 2, frameWall + 0.6, d.deckTop + 0.6, 0.15, 0.5);
-  const magnetPad = cylinder(d.magnets[0].x, d.magnets[0].y, d.deckTop + 0.15, 0.25, 0.4);
-  const jointPad = cylinder(d.joints[0].x + 1.7, d.joints[0].y, d.deckTop + 0.15, 0.25, 0.4);
-  if (intersectionVolume(tray, frameSpan) >= 1e-5 || intersectionVolume(tray, magnetPad) < 0.05 || intersectionVolume(tray, jointPad) < 0.05) {
+  const cornerPad = cylinder(d.magnets[0].x + 2.5, d.magnets[0].y, d.deckTop + 0.15, 0.25, 0.4);
+  if (intersectionVolume(tray, frameSpan) >= 1e-5 || intersectionVolume(tray, cornerPad) < 0.05) {
     throw new Error("Thin frame or corner reinforcement is missing");
   }
   const lidCenterX = d.length / 2; const lidCenterY = d.width / 2;
@@ -162,7 +169,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       intersectionVolume(lid, cylinder(lidCenterX, lidCenterY, d.top + 2.25, 0.25, 0.7)) < 0.1) {
     throw new Error("Lid center pocket or roof is missing");
   }
-  completed.push("Thin frame, reinforced fasteners, and lid skin verified");
+  completed.push("Thin frame, reinforced corners, and lid skin verified");
   if (settings.joint === "screws") {
     const p = d.joints[0];
     if (intersectionVolume(base, cylinder(p.x + 1.8, p.y, 2.45, 0.08, 0.15)) >= 1e-5 ||
