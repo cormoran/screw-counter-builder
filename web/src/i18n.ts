@@ -31,7 +31,7 @@ const messages = {
   ja: {
     appTitle: 'ねじカウンター生成器',
     appDescription: '印刷用STLと組立用STEPをこのブラウザ内で生成します。',
-    relatedLinks: '関連リンク', language: '言語', settings: '設定', basic: '基本', showAdvanced: '詳細設定', hideAdvanced: '詳細設定を隠す',
+    relatedLinks: '関連リンク', language: '言語', settings: '設定', basic: '基本', showAdvanced: '詳細設定', hideAdvanced: '詳細設定を隠す', resetSettings: '既定値に戻す', settingsReset: '設定を既定値に戻しました。', version: 'バージョン', commitDate: 'コミット日時', unknown: '不明',
     preview: 'プレビュー', printPlate: '印刷プレート', realtimePreview: 'リアルタイムプレビュー', returnAssembly: '組立プレビューに戻る', showPrintPreview: '印刷プレビューを表示', previewDisplayMode: 'プレビュー表示モード', assembled: '完成', exploded: 'パーツ分離', twoDimensional: '2D', selectPrintPlate: '印刷プレートを選択', plate: 'プレート', parts: '部品', loading3d: '3Dプレビューを準備しています…',
     overallSize: '外形', pitch: 'ピッチ', capacity: '収容本数', pieces: '本', output: '出力', fixSettings: '設定を修正してください', generate: 'モデルを生成', generating: 'モデルを生成中…', cancelGeneration: '生成を中止',
     print3mf: 'Bambu Studio 用3MF', print3mfDescription: '4部品を選択したプレートへ印刷向きで配置します。Bambu Studioで機種・材料・印刷条件を選んでスライスしてください。組立時はスライダーをベースへ上から載せ、その後トレーを固定します。', plateSize: 'プレートサイズ', generate3mf: '3MFを生成してプレビュー', generating3mf: '3MFを生成中…', download3mf: '3MFをダウンロード', footer: 'プリセットのねじ寸法は規格保証値ではありません。実物を測定し、印刷条件と実機での動作を確認してください。',
@@ -46,7 +46,7 @@ const messages = {
   en: {
     appTitle: 'Screw Counter Builder',
     appDescription: 'Generate print-ready STL files and an assembly STEP file entirely in your browser.',
-    relatedLinks: 'Related links', language: 'Language', settings: 'Settings', basic: 'Basic', showAdvanced: 'Advanced settings', hideAdvanced: 'Hide advanced settings',
+    relatedLinks: 'Related links', language: 'Language', settings: 'Settings', basic: 'Basic', showAdvanced: 'Advanced settings', hideAdvanced: 'Hide advanced settings', resetSettings: 'Reset to defaults', settingsReset: 'Settings were reset to defaults.', version: 'Version', commitDate: 'Commit date', unknown: 'Unknown',
     preview: 'Preview', printPlate: 'Print plate', realtimePreview: 'Live preview', returnAssembly: 'Return to assembly preview', showPrintPreview: 'Show print preview', previewDisplayMode: 'Preview display mode', assembled: 'Assembled', exploded: 'Exploded', twoDimensional: '2D', selectPrintPlate: 'Select print plate', plate: 'Plate', parts: 'parts', loading3d: 'Preparing 3D preview…',
     overallSize: 'Overall size', pitch: 'Pitch', capacity: 'Capacity', pieces: 'pieces', output: 'Output', fixSettings: 'Fix the settings below', generate: 'Generate model', generating: 'Generating model…', cancelGeneration: 'Cancel generation',
     print3mf: 'Bambu Studio 3MF', print3mfDescription: 'Places all four parts in print orientation on the selected plate. Choose your printer, material, and print settings in Bambu Studio before slicing. For assembly, place the slider into the base from above, then secure the tray.', plateSize: 'Plate size', generate3mf: 'Generate and preview 3MF', generating3mf: 'Generating 3MF…', download3mf: 'Download 3MF', footer: 'The preset screw dimensions are not guaranteed standard values. Measure the actual screw and confirm operation with your print settings and a physical test.',

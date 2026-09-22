@@ -16,6 +16,7 @@ type PreviewState = 'idle' | 'generating' | 'error'
 type PrintState = 'ready' | 'generating' | 'error'
 type PendingTransfer = { label: string; detail: string; action: () => void }
 const ModelViewer = lazy(() => import('./components/ModelViewer').then((module) => ({ default: module.ModelViewer })))
+const buildCommitDate = new Date(__BUILD_COMMIT_DATE__)
 
 const PART_FILES = [['assembly.step', 'assemblyFile'], ['base.stl', 'baseFile'], ['tray.stl', 'trayFile'], ['slider.stl', 'sliderFile'], ['lid.stl', 'lidFile'], ['dimensions.json', 'dimensionsFile']] as const
 
@@ -91,6 +92,29 @@ export default function App() {
     setPreviewPlateIndex(0)
     setPrintState('ready')
     setState('ready')
+  }
+
+  function resetSettings() {
+    const defaults = { ...DEFAULT_SETTINGS }
+    hasEditedSettings.current = false
+    saveSettings(defaults)
+    generation.current?.abort()
+    previewGeneration.current?.abort()
+    printRequest.current += 1
+    setSettings(defaults)
+    setModel(null)
+    setPreview(null)
+    setPreviewState('idle')
+    setPreviewStatus(text(language, 'loadingDefaultPreview'))
+    setPrintArtifact(null)
+    setShowPrintPreview(false)
+    setPreviewPlateIndex(0)
+    setPrintState('ready')
+    setPrintStatus('')
+    setState('ready')
+    setStatus(text(language, 'settingsReset'))
+    setPendingTransfer(null)
+    void loadInitialPreview()
   }
 
   useEffect(() => {
@@ -271,7 +295,7 @@ export default function App() {
     </header>
     <div className="tool-layout">
       <section className="panel form-panel" aria-labelledby="settings-title">
-        <div className="section-heading"><h2 id="settings-title">{text(language, 'settings')}</h2><span>{text(language, 'basic')}</span></div>
+        <div className="section-heading settings-heading"><div><h2 id="settings-title">{text(language, 'settings')}</h2><span>{text(language, 'basic')}</span></div><button className="reset-button" type="button" disabled={!differsFromDefaults(settings)} onClick={resetSettings}>{text(language, 'resetSettings')}</button></div>
         {displayMeshes && !isPrintPreview && previewMode !== '2d' && <div className="settings-mini-preview"><DimensionPreview dimensions={displayDimensions} language={language} compact /></div>}
         <SettingsForm fields={settingsFields.filter((field) => field.category === 'basic')} settings={settings} onChange={update} />
         <button className="details-button" type="button" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}>
@@ -325,7 +349,10 @@ export default function App() {
         </section>
       </aside>
     </div>
-    <footer><p>{text(language, 'footer')}</p></footer>
+    <footer>
+      <p>{text(language, 'footer')}</p>
+      <p className="build-info"><span>{text(language, 'version')}: <code>{__BUILD_COMMIT_HASH__}</code></span> <span>{text(language, 'commitDate')}: {formatBuildCommitDate(language, buildCommitDate)}</span></p>
+    </footer>
     {pendingTransfer && <DataConfirmation language={language} pending={pendingTransfer} onCancel={() => setPendingTransfer(null)} onContinue={() => { const action = pendingTransfer.action; setPendingTransfer(null); action() }} />}
   </main>
 }
@@ -370,3 +397,10 @@ function phaseLabel(language: Language, phase: string) {
 
 function fmt(language: Language, value: number) { return formatNumber(language, value) }
 function formatBytes(language: Language, value: number) { return `${formatNumber(language, value / 1024 / 1024)} MB` }
+function formatBuildCommitDate(language: Language, value: Date) {
+  if (Number.isNaN(value.getTime())) return text(language, 'unknown')
+  return new Intl.DateTimeFormat(language === 'ja' ? 'ja-JP' : 'en-US', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
+  }).format(value)
+}
