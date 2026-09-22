@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { detectLanguage, loadLanguage, saveLanguage } from './i18n'
+import { detectLanguage, loadLanguage, saveLanguage, text } from './i18n'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -15,5 +15,10 @@ describe('language preference', () => {
     vi.stubGlobal('navigator', { languages: ['ja-JP'] })
     saveLanguage('en')
     expect(loadLanguage()).toBe('en')
+  })
+
+  it('localizes the preview reset control', () => {
+    expect(text('ja', 'resetPreviewDisplay')).toBe('表示をリセット')
+    expect(text('en', 'resetPreviewDisplay')).toBe('Reset view')
   })
 })

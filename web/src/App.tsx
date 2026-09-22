@@ -43,6 +43,7 @@ export default function App() {
   const previewGeneration = useRef<AbortController | null>(null)
   const printRequest = useRef(0)
   const [previewRetry, setPreviewRetry] = useState(0)
+  const [previewViewReset, setPreviewViewReset] = useState(0)
   const wasmApproved = useRef(false)
   const previewApproved = useRef(false)
   const hasEditedSettings = useRef(differsFromDefaults(settings))
@@ -115,6 +116,12 @@ export default function App() {
     setStatus(text(language, 'settingsReset'))
     setPendingTransfer(null)
     void loadInitialPreview()
+  }
+
+  function resetPreviewDisplay() {
+    assemblyCamera.current = null
+    printCamera.current = null
+    setPreviewViewReset((value) => value + 1)
   }
 
   useEffect(() => {
@@ -320,9 +327,10 @@ export default function App() {
             <button className={previewMode === 'assembled' ? 'selected' : ''} type="button" onClick={() => setPreviewMode('assembled')} aria-pressed={previewMode === 'assembled'}>{text(language, 'assembled')}</button>
             <button className={previewMode === 'exploded' ? 'selected' : ''} type="button" onClick={() => setPreviewMode('exploded')} aria-pressed={previewMode === 'exploded'}>{text(language, 'exploded')}</button>
             <button className={previewMode === '2d' ? 'selected' : ''} type="button" onClick={() => setPreviewMode('2d')} aria-pressed={previewMode === '2d'}>2D</button>
+            <button className="viewer-reset-button" type="button" onClick={resetPreviewDisplay}>{text(language, 'resetPreviewDisplay')}</button>
           </div>}
           {isPrintPreview && printArtifact.plates.length > 1 && <div className="plate-tabs" role="group" aria-label={text(language, 'selectPrintPlate')}>{printArtifact.plates.map((plate, index) => <button key={index} type="button" aria-pressed={previewPlateIndex === index} className={previewPlateIndex === index ? 'selected' : ''} onClick={() => setPreviewPlateIndex(index)}>{text(language, 'plate')} {index + 1} <span>{plate.placements.length} {text(language, 'parts')}</span></button>)}</div>}
-          {displayMeshes ? <Suspense fallback={<div className="preview-empty">{text(language, 'loading3d')}</div>}><ModelViewer language={language} meshes={displayMeshes} dimensions={isPrintPreview ? null : previewMode === '2d' ? dimensions : displayDimensions} mode={printPreviewPlate ? 'assembled' : previewMode} cameraState={printPreviewPlate ? printCamera : assemblyCamera} {...(printPreviewPlate ? { printPlateSize: { width: printPreviewPlate.width, depth: printPreviewPlate.depth } } : {})} /></Suspense> : <DimensionPreview dimensions={dimensions} language={language} />}
+          {displayMeshes ? <Suspense fallback={<div className="preview-empty">{text(language, 'loading3d')}</div>}><ModelViewer language={language} meshes={displayMeshes} dimensions={isPrintPreview ? null : previewMode === '2d' ? dimensions : displayDimensions} mode={printPreviewPlate ? 'assembled' : previewMode} cameraState={printPreviewPlate ? printCamera : assemblyCamera} resetKey={previewViewReset} {...(printPreviewPlate ? { printPlateSize: { width: printPreviewPlate.width, depth: printPreviewPlate.depth } } : {})} /></Suspense> : <DimensionPreview dimensions={dimensions} language={language} />}
           {shownDimensions && <dl className="dimensions">
             <div><dt>{text(language, 'overallSize')}</dt><dd>{fmt(language, shownDimensions.length)} × {fmt(language, shownDimensions.width)} × {fmt(language, shownDimensions.top)} mm</dd></div>
             <div><dt>{text(language, 'pitch')}</dt><dd>{fmt(language, shownDimensions.pitch)} mm</dd></div>

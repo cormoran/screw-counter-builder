@@ -27,6 +27,10 @@ function loadCamera(): ViewerCameraState | null {
 function storeCamera(camera: ViewerCameraState): void {
   try { window.sessionStorage.setItem(CAMERA_KEY, JSON.stringify(camera)) } catch { /* Storage is optional. */ }
 }
+
+function clearStoredCamera(): void {
+  try { window.sessionStorage.removeItem(CAMERA_KEY) } catch { /* Storage is optional. */ }
+}
 type Props = {
   meshes: Partial<Record<ModelPart, TriangleMesh>>
   language: Language
@@ -34,6 +38,7 @@ type Props = {
   mode: ViewMode
   cameraState: { current: ViewerCameraState | null }
   printPlateSize?: { width: number; depth: number }
+  resetKey: number
 }
 type DisplayMesh = {
   id: ModelPart
@@ -43,6 +48,7 @@ type DisplayMesh = {
 }
 type ViewerRuntime = {
   update: (meshes: Props['meshes'], printPlateSize?: Props['printPlateSize']) => void
+  reset: () => void
 }
 
 const PARTS: readonly { id: ModelPart; label: 'base' | 'tray' | 'slider' | 'lid'; color: number; offset: [number, number, number] }[] = [
@@ -52,7 +58,7 @@ const PARTS: readonly { id: ModelPart; label: 'base' | 'tray' | 'slider' | 'lid'
   { id: 'lid', label: 'lid', color: 0x3b82f6, offset: [0, 0, 19] },
 ]
 
-export function ModelViewer({ language, meshes, dimensions = null, mode, cameraState, printPlateSize }: Props) {
+export function ModelViewer({ language, meshes, dimensions = null, mode, cameraState, printPlateSize, resetKey }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const [separation, setSeparation] = useState(100)
   const [visibleParts, setVisibleParts] = useState<Partial<Record<ModelPart, boolean>>>({})
@@ -105,6 +111,13 @@ export function ModelViewer({ language, meshes, dimensions = null, mode, cameraS
     let plateSize: Props['printPlateSize']
     let sceneSize = 80
     let positioned = false
+    const setDefaultCamera = () => {
+      if (printPlateSizeRef.current) camera.position.set(sceneSize * 0.42, -sceneSize * 0.52, sceneSize * 0.9)
+      else camera.position.set(sceneSize * 0.7, -sceneSize * 0.85, sceneSize * 0.65)
+      controls.target.set(0, 0, 0)
+      camera.zoom = 1
+      camera.updateProjectionMatrix()
+    }
     const createGeometry = (mesh: TriangleMesh) => {
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3))
@@ -176,9 +189,7 @@ export function ModelViewer({ language, meshes, dimensions = null, mode, cameraS
           camera.zoom = prior.zoom
           camera.updateProjectionMatrix()
         } else {
-          if (nextPlateSize) camera.position.set(size * 0.42, -size * 0.52, size * 0.9)
-          else camera.position.set(size * 0.7, -size * 0.85, size * 0.65)
-          controls.target.set(0, 0, 0)
+          setDefaultCamera()
         }
         positioned = true
       } else if (sceneSize > 0) {
@@ -228,7 +239,13 @@ export function ModelViewer({ language, meshes, dimensions = null, mode, cameraS
     }
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
     renderer.domElement.addEventListener('click', onClick)
-    runtime.current = { update }
+    const reset = () => {
+      cameraState.current = null
+      if (!printPlateSizeRef.current) clearStoredCamera()
+      setDefaultCamera()
+      controls.update()
+    }
+    runtime.current = { update, reset }
     let frame = 0
     const render = () => {
       const factor = !printPlateSizeRef.current && modeRef.current === 'exploded' ? separationRef.current / 100 : 0
@@ -263,7 +280,14 @@ export function ModelViewer({ language, meshes, dimensions = null, mode, cameraS
 
   useEffect(() => {
     runtime.current?.update(meshes, printPlateSize)
-  }, [meshes, printPlateSize?.width, printPlateSize?.depth])
+  }, [meshes, printPlateSize?.width, printPlateSize?.depth, show3d])
+
+  useEffect(() => {
+    if (resetKey === 0) return
+    setSeparation(100)
+    setVisibleParts({})
+    runtime.current?.reset()
+  }, [resetKey])
 
   return <div className="model-viewer">
     {!printPlateSize && mode !== '2d' && <label className="separation-control">
