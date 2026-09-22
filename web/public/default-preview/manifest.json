@@ -3,11 +3,13 @@
   "settings": {
     "detent": true,
     "detentSpringWidth": 1.2,
-    "detentSpringLength": 13,
+    "detentSpringLength": 9,
+    "detentDiameter": 2.6,
     "rows": 4,
     "columns": 10,
     "screw": "M2",
     "joint": "screws",
+    "lidAlignment": "magnets",
     "magnetDiameter": 6,
     "magnetThickness": 2,
     "magnetDiameterClearance": 0.3,
@@ -26,6 +28,6 @@
     "slider": "slider.mesh",
     "lid": "lid.mesh"
   },
-  "rawBytes": 1216416,
-  "gzipBytes": 279943
+  "rawBytes": 1272240,
+  "gzipBytes": 297068
 }

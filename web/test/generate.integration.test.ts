@@ -13,15 +13,27 @@ vi.mock("replicad-opencascadejs/wasm?url", () => ({
 
 describe("browser CAD integration", () => {
   it("changes the printed slider when the detent spring is shortened", async () => {
-    const short = await generateModel({ rows: 1, columns: 1, detentSpringLength: 12 });
+    const short = await generateModel({ rows: 1, columns: 1, detentSpringLength: 6 });
     const long = await generateModel({ rows: 1, columns: 1, detentSpringLength: 18 });
     expect(short.diagnostics.slider.volume).toBeGreaterThan(long.diagnostics.slider.volume);
-    expect(short.dimensions.detent?.springLength).toBe(12);
+    expect(short.dimensions.detent?.springLength).toBe(6);
     expect(long.dimensions.detent?.springLength).toBe(18);
     for (const part of ["base", "tray", "lid"] as const) {
       expect(short.files[`${part}.stl`]).toBe(long.files[`${part}.stl`]);
     }
     expect(short.files["slider.stl"]).not.toBe(long.files["slider.stl"]);
+  }, 120_000);
+
+  it("builds printed lid alignment pegs without changing the other parts", async () => {
+    const settings = { rows: 1, columns: 1 } as const;
+    const magnets = await generateModel({ ...settings, lidAlignment: "magnets" });
+    const pegs = await generateModel({ ...settings, lidAlignment: "pegs" });
+    expect(pegs.verification.completed).toContain("Lid alignment pegs retain 0.3 mm radial and axial receptacle clearance");
+    expect(pegs.diagnostics.lid.volume).toBeGreaterThan(magnets.diagnostics.lid.volume);
+    expect(pegs.files["lid.stl"]).not.toBe(magnets.files["lid.stl"]);
+    for (const part of ["base", "tray", "slider"] as const) {
+      expect(pegs.files[`${part}.stl`]).toBe(magnets.files[`${part}.stl`]);
+    }
   }, 120_000);
 
   it("generates M2 4x2 exports and diagnostics", async () => {
@@ -30,18 +42,21 @@ describe("browser CAD integration", () => {
     expect(model.files["assembly.step"].size).toBeGreaterThan(0);
     expect(model.verification.completed).toContain("4 valid single solids");
     expect(model.verification.completed).toContain("Detent pockets retain the base floor; inter-station clearance verified");
+    expect(model.verification.completed).toContain("Low-side pullout groove, 45-degree flexible slider tongue, and full release travel verified");
     expect(model.verification.completed).toContain("Thin frame, reinforced corners, and lid skin verified");
     expect(model.verification.completed).toContain("Overlapping storage handles, closed-lid discharge plug, and 45-degree internal gusset verified");
     expect(model.diagnostics.lid.bounds.min[0]).toBeGreaterThan(-1e-5);
     expect(model.verification.completed).toContain("Tray and slider storage handles retain reinforced thickness");
+    expect(model.verification.completed).toContain("Tray and slider handle roots are square while outer tips stay rounded");
     expect(model.verification.completed).toContain("Tray storage handle retains its full-width 45-degree root rib");
-    expect(model.verification.completed).toContain("Discharge cutout upper chamfers and matching lid lips verified");
+    expect(model.verification.completed).toContain("Discharge cutout full-height chamfers and matching lid lips verified");
     expect(model.verification.completed).toContain("Coaxial corner fasteners and magnet pockets remain vertically separated");
     expect(model.dimensions.joints).toEqual(model.dimensions.magnets);
     expect(model.verification.completed).toContain("Assembly screw counterbore retains its head seat and 45-degree roof");
     expect(model.verification.completed).toContain("Tapered registration lands and sockets retain 45-degree printable faces");
     expect(model.dimensions.screwSpaceHeight).toBe(15);
-    expect(model.dimensions.deckThickness).toBe(1.6);
+    expect(model.dimensions.deckThickness).toBe(0.75);
+    expect(model.dimensions.drop).toBe(3.5);
     expect(model.dimensions.drop - model.dimensions.head).toBeCloseTo(0.3);
     expect(model.dimensions.window - model.dimensions.head).toBeCloseTo(1);
     expect(model.dimensions.sliderZ - model.dimensions.floor).toBeCloseTo(0.2);
@@ -70,10 +85,16 @@ describe("browser CAD integration", () => {
     { rows: 6, columns: 3, screw: "M3" as const, joint: "screws" as const },
     { rows: 1, columns: 1, screw: "M2" as const, joint: "screws" as const },
     { rows: 4, columns: 2, screw: "M2" as const, joint: "screws" as const, screwSpaceHeight: 10 },
+    { rows: 1, columns: 1, screw: "M3" as const, joint: "glue" as const, lidAlignment: "pegs" as const, screwSpaceHeight: 3.5 },
+    { rows: 1, columns: 1, screw: "M2" as const, joint: "glue" as const, detent: false, slideClearance: 0.6 },
+    { rows: 1, columns: 1, screw: "M2" as const, joint: "screws" as const, detentDiameter: 3.2, detentSpringLength: 6 },
   ])("generates the $screw $rows x $columns $joint validation case", async (settings) => {
     const model = await generateModel(settings);
     expect(model.verification.completed).toContain("Release, retention, and shaft clearance checked at representative stations");
-    expect(model.verification.completed).toContain("Coaxial corner fasteners and magnet pockets remain vertically separated");
+    expect(model.verification.completed).toContain("Low-side pullout groove, 45-degree flexible slider tongue, and full release travel verified");
+    expect(model.verification.completed).toContain("lidAlignment" in settings && settings.lidAlignment === "pegs"
+      ? "Coaxial corner fasteners and lid alignment receptacles remain vertically separated"
+      : "Coaxial corner fasteners and magnet pockets remain vertically separated");
     expect(model.verification.completed).toContain("Thin frame, reinforced corners, and lid skin verified");
     expect(model.verification.completed).toContain("Overlapping storage handles, closed-lid discharge plug, and 45-degree internal gusset verified");
     expect(model.files["assembly.step"].size).toBeGreaterThan(0);

@@ -4,21 +4,22 @@ import { deriveDimensions, validateSettings } from "./index";
 describe("browser CAD dimensions", () => {
   it("derives the print-feedback M2 4x2 dimensions", () => {
     const d = deriveDimensions({ rows: 4, columns: 2, screw: "M2" });
-    expect(d.length).toBeCloseTo(43.85);
-    expect(d.width).toBeCloseTo(54.2);
-    expect(d.top).toBeCloseTo(21.8);
+    expect(d.length).toBeCloseTo(43.25);
+    expect(d.width).toBeCloseTo(53);
+    expect(d.top).toBeCloseTo(20.95);
     expect(d.pitch).toBe(8);
-    expect(d.drop).toBeCloseTo(d.head + 0.3);
-    expect(d.deckThickness).toBeCloseTo(1.6);
+    expect(d.head).toBeCloseTo(3.2);
+    expect(d.drop).toBeCloseTo(3.5);
+    expect(d.deckThickness).toBeCloseTo(0.75);
     expect(d.screwXs).toEqual([22, 30]);
-    expect(d.screwYs.map((y) => Number(y.toFixed(1)))).toEqual([15.1, 23.1, 31.1, 39.1]);
+    expect(d.screwYs.map((y) => Number(y.toFixed(1)))).toEqual([14.5, 22.5, 30.5, 38.5]);
     expect(d.joints).toEqual(d.magnets);
   });
 
   it("derives the standard M2 4x10 positions", () => {
     const d = deriveDimensions({ rows: 4, columns: 10, screw: "M2" });
-    expect(d.length).toBeCloseTo(107.85);
-    expect(d.width).toBeCloseTo(54.2);
+    expect(d.length).toBeCloseTo(107.25);
+    expect(d.width).toBeCloseTo(53);
     expect(d.screwXs.at(-1)).toBe(94);
   });
 
@@ -31,10 +32,25 @@ describe("browser CAD dimensions", () => {
   });
 
   it("uses the adjustable spring length and bounds its range", () => {
-    expect(deriveDimensions().detent?.springLength).toBe(13);
+    expect(deriveDimensions().detent?.springLength).toBe(9);
+    expect(deriveDimensions({ detentSpringLength: 6 }).detent?.springLength).toBe(6);
     expect(deriveDimensions({ detentSpringLength: 18 }).detent?.springLength).toBe(18);
-    expect(validateSettings({ detentSpringLength: 11.5 })).not.toEqual([]);
+    expect(validateSettings({ detentSpringLength: 5.5 })).not.toEqual([]);
     expect(validateSettings({ detentSpringLength: 18.5 })).not.toEqual([]);
+  });
+
+  it("sizes both sides of the click detent from its diameter", () => {
+    expect(deriveDimensions().detent?.noseRadius).toBeCloseTo(1.3);
+    expect(deriveDimensions().detent?.notchRadius).toBeCloseTo(1.4);
+    expect(deriveDimensions({ detentDiameter: 2 }).detent?.noseRadius).toBeCloseTo(1);
+    expect(validateSettings({ detentDiameter: 1.9 })).not.toEqual([]);
+    expect(validateSettings({ detentDiameter: 3.3 })).not.toEqual([]);
+  });
+
+  it("accepts both lid alignment methods", () => {
+    expect(validateSettings({ lidAlignment: "magnets" })).toEqual([]);
+    expect(validateSettings({ lidAlignment: "pegs" })).toEqual([]);
+    expect(validateSettings({ lidAlignment: "invalid" as "pegs" })).not.toEqual([]);
   });
 
   it("rejects non-finite and oversized untrusted inputs", () => {

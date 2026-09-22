@@ -1,15 +1,19 @@
 /** Public, UI-independent contract for the browser CAD generator. Dimensions are mm. */
 export type ScrewSize = "M1.5" | "M2" | "M3";
 export type JointType = "screws" | "glue";
+export type LidAlignment = "magnets" | "pegs";
 
 export interface Settings {
   detent: boolean;
   detentSpringWidth: number;
   detentSpringLength: number;
+  /** Diameter of the slider click nub; the matching base recess adds 0.2 mm. */
+  detentDiameter: number;
   rows: number;
   columns: number;
   screw: ScrewSize;
   joint: JointType;
+  lidAlignment: LidAlignment;
   magnetDiameter: number;
   magnetThickness: number;
   magnetDiameterClearance: number;

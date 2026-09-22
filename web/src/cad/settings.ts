@@ -2,14 +2,14 @@ import type { Settings, SettingsInput, ScrewPreset } from "./types";
 
 export const SCREW_PRESETS: Readonly<Record<string, ScrewPreset>> = {
   "M1.5": { shaft: 1.5, head: 3, slot: 2.1, pitch: 8 },
-  M2: { shaft: 2, head: 4.4, slot: 2.6, pitch: 8 },
+  M2: { shaft: 2, head: 3.2, slot: 2.6, pitch: 8 },
   M3: { shaft: 3, head: 6, slot: 3.6, pitch: 10 },
 };
 
 /** Diametral clearance at the straight through-hole, tuned from print feedback. */
 export const TRAY_HOLE_DIAMETER_CLEARANCE = 0.3;
-/** Extra radius at only the top 0.3 mm of the tray hole. */
-export const TRAY_ENTRY_RADIAL_FLARE = 0.1;
+/** A 45-degree, 0.3 mm chamfer around the top of each tray hole. */
+export const TRAY_ENTRY_RADIAL_FLARE = 0.3;
 export const RELEASE_WINDOW_DIAMETER_CLEARANCE = 1.0;
 
 export function resolveScrewDimensions(settings: Settings): { headDiameter: number; shaftDiameter: number; slotWidth: number; pitch: number } | null {
@@ -28,11 +28,13 @@ export function resolveScrewDimensions(settings: Settings): { headDiameter: numb
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   detent: true,
   detentSpringWidth: 1.2,
-  detentSpringLength: 13,
+  detentSpringLength: 9,
+  detentDiameter: 2.6,
   rows: 4,
   columns: 10,
   screw: "M2",
   joint: "screws",
+  lidAlignment: "magnets",
   magnetDiameter: 6,
   magnetThickness: 2,
   magnetDiameterClearance: 0.3,
@@ -63,6 +65,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
     errors.push(`rows and columns must be positive integers within ${MAX_ROWS} × ${MAX_COLUMNS}`);
   }
   if (settings.joint !== "screws" && settings.joint !== "glue") errors.push("joint must be screws or glue");
+  if (settings.lidAlignment !== "magnets" && settings.lidAlignment !== "pegs") errors.push("lidAlignment must be magnets or pegs");
   if (settings.magnetDiameter < 3 || settings.magnetDiameter > 8) errors.push("Supported magnet diameter is 3..8 mm");
   if (settings.magnetThickness < 1 || settings.magnetThickness > 3) errors.push("Supported magnet thickness is 1..3 mm");
   if (settings.slideClearance < 0.15 || settings.slideClearance > 0.6) errors.push("slideClearance must be 0.15..0.6 mm");
@@ -72,15 +75,16 @@ export function validateSettings(input: SettingsInput = {}): string[] {
     errors.push("Magnet clearance is outside the supported range");
   }
   if (settings.detentSpringWidth < 1 || settings.detentSpringWidth > 1.5) errors.push("detentSpringWidth must be 1.0..1.5 mm");
-  if (settings.detentSpringLength < 12 || settings.detentSpringLength > 18) errors.push("detentSpringLength must be 12..18 mm");
+  if (settings.detentSpringLength < 6 || settings.detentSpringLength > 18) errors.push("detentSpringLength must be 6..18 mm");
+  if (settings.detentDiameter < 2 || settings.detentDiameter > 3.2) errors.push("detentDiameter must be 2.0..3.2 mm");
   // The short corner screw stops below the magnet pocket, even at minimum height.
-  const deckTop = 1.6 + 2 * settings.slideClearance + 2 + 1.6;
+  const deckTop = 1.6 + 2 * settings.slideClearance + 2 + 0.75;
   const magnetPocketBottom = deckTop + settings.screwSpaceHeight + 1.2 - settings.magnetThickness - settings.magnetDepthClearance;
   if (settings.joint === "screws" && magnetPocketBottom < 7.8) errors.push("Need at least 0.5 mm between the corner screw and magnet pocket; increase screw space height or use a thinner magnet");
   if (!preset) return errors;
   const numericValues = [
     settings.screwSpaceHeight, settings.magnetDiameter, settings.magnetThickness, settings.magnetDiameterClearance,
-    settings.magnetDepthClearance, settings.slideClearance, settings.trayHoleClearance, settings.detentSpringWidth, settings.detentSpringLength,
+    settings.magnetDepthClearance, settings.slideClearance, settings.trayHoleClearance, settings.detentSpringWidth, settings.detentSpringLength, settings.detentDiameter,
     settings.headDiameter, settings.shaftDiameter, settings.slotWidth, settings.pitch,
   ];
   if (numericValues.some((value) => value !== null && !Number.isFinite(value))) {
