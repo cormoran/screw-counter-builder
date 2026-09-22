@@ -1,16 +1,16 @@
-import { assertValidSettings, SCREW_PRESETS } from "./settings";
+import { assertValidSettings, RELEASE_WINDOW_DIAMETER_CLEARANCE, resolveScrewDimensions } from "./settings";
 import type { DerivedDimensions, Settings, SettingsInput } from "./types";
 
 /** Browser CAD dimensions. Keep shape decisions here for future UI controls. */
 export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedDimensions {
   const c = assertValidSettings(input);
-  const preset = SCREW_PRESETS[c.screw];
-  const shaft = c.shaftDiameter ?? preset.shaft;
-  const head = c.headDiameter ?? preset.head;
-  const slot = c.slotWidth ?? preset.slot;
-  const drop = head + 0.6;
-  const window = head + 1.0;
-  const pitch = c.pitch ?? Math.max(preset.pitch, Math.ceil(window + 2));
+  const resolved = resolveScrewDimensions(c)!;
+  const shaft = resolved.shaftDiameter;
+  const head = resolved.headDiameter;
+  const slot = resolved.slotWidth;
+  const drop = head + c.trayHoleClearance;
+  const window = head + RELEASE_WINDOW_DIAMETER_CLEARANCE;
+  const pitch = resolved.pitch;
   const rim = Math.max(10, c.magnetDiameter + 4);
   const wall = rim - 1.3;
   const sliderInsetY = wall + c.slideClearance;

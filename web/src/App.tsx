@@ -61,7 +61,9 @@ export default function App() {
 
   function update(key: keyof Settings, value: Settings[keyof Settings]) {
     hasEditedSettings.current = true
-    const next = { ...settings, [key]: value }
+    const next = key === 'screw'
+      ? { ...settings, screw: value as Settings['screw'], headDiameter: null, shaftDiameter: null, slotWidth: null, pitch: null }
+      : { ...settings, [key]: value }
     saveSettings(next)
     generation.current?.abort()
     previewGeneration.current?.abort()
@@ -385,6 +387,7 @@ function localizeValidation(message: string) {
     'Supported magnet diameter is 3..8 mm': '磁石の直径は3〜8 mmにしてください。',
     'Supported magnet thickness is 1..3 mm': '磁石の厚みは1〜3 mmにしてください。',
     'slideClearance must be 0.15..0.6 mm': 'スライドのクリアランスは0.15〜0.6 mmにしてください。',
+    'trayHoleClearance must be 0.1..1.2 mm': 'トレー穴の径クリアランスは0.1〜1.2 mmにしてください。',
     'screwSpaceHeight must be 3.5..30 mm': 'ねじ収納スペースの高さは3.5〜30 mmにしてください。',
     'Magnet clearance is outside the supported range': '磁石穴のクリアランスが対応範囲を外れています。',
     'detentSpringWidth must be 1.0..1.5 mm': 'ばね幅は1.0〜1.5 mmにしてください。',

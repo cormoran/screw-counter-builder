@@ -23,7 +23,7 @@ describe("browser CAD integration", () => {
     expect(model.verification.completed).toContain("Assembly screw counterbore retains its head seat and 45-degree roof");
     expect(model.dimensions.screwSpaceHeight).toBe(15);
     expect(model.dimensions.deckThickness).toBe(1.6);
-    expect(model.dimensions.drop - model.dimensions.head).toBeCloseTo(0.6);
+    expect(model.dimensions.drop - model.dimensions.head).toBeCloseTo(0.3);
     expect(model.dimensions.window - model.dimensions.head).toBeCloseTo(1);
     expect(model.dimensions.sliderZ - model.dimensions.floor).toBeCloseTo(0.2);
     expect(model.dimensions.detent?.nominalDeflection).toBeCloseTo(0.7);

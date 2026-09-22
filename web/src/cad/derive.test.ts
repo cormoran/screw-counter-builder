@@ -4,11 +4,11 @@ import { deriveDimensions, validateSettings } from "./index";
 describe("browser CAD dimensions", () => {
   it("derives the print-feedback M2 4x2 dimensions", () => {
     const d = deriveDimensions({ rows: 4, columns: 2, screw: "M2" });
-    expect(d.length).toBeCloseTo(44);
+    expect(d.length).toBeCloseTo(43.85);
     expect(d.width).toBeCloseTo(54.2);
     expect(d.top).toBeCloseTo(21.8);
     expect(d.pitch).toBe(8);
-    expect(d.drop).toBeCloseTo(d.head + 0.6);
+    expect(d.drop).toBeCloseTo(d.head + 0.3);
     expect(d.deckThickness).toBeCloseTo(1.6);
     expect(d.screwXs).toEqual([22, 30]);
     expect(d.screwYs.map((y) => Number(y.toFixed(1)))).toEqual([15.1, 23.1, 31.1, 39.1]);
@@ -17,9 +17,17 @@ describe("browser CAD dimensions", () => {
 
   it("derives the standard M2 4x10 positions", () => {
     const d = deriveDimensions({ rows: 4, columns: 10, screw: "M2" });
-    expect(d.length).toBeCloseTo(108);
+    expect(d.length).toBeCloseTo(107.85);
     expect(d.width).toBeCloseTo(54.2);
     expect(d.screwXs.at(-1)).toBe(94);
+  });
+
+  it("adjusts the tray hole without changing the measured screw head", () => {
+    const d = deriveDimensions({ headDiameter: 4.5, trayHoleClearance: 0.4 });
+    expect(d.head).toBe(4.5);
+    expect(d.drop).toBeCloseTo(4.9);
+    expect(d.window).toBeCloseTo(5.5);
+    expect(validateSettings({ trayHoleClearance: 0.05 })).not.toEqual([]);
   });
 
   it("rejects non-finite and oversized untrusted inputs", () => {
