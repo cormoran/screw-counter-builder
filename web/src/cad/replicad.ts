@@ -85,6 +85,20 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     // Open only the upper rim: the continuous deck remains the runway that
     // guides a screw to the front discharge opening.
     .cut(box(-0.1, drainY, d.deckTop - 0.1, frameWall + 0.2, drainWidth, d.top - d.deckTop + 0.2));
+  // Two short ribs carry the hanging load from the handle into the tray's
+  // rear wall. Stop before the hook opening, and leave its middle unobstructed.
+  const handleRibRootX = storageHandleX - 0.4;
+  const handleRibRun = 3.2;
+  const handleRibBaseZ = d.deckTop + handleExtraThickness;
+  const handleRibWidth = 3;
+  const handleRibYs = [storageHandleY + 1, storageHandleY + storageHandleWidth - handleRibWidth - 1];
+  for (const ribY of handleRibYs) {
+    tray = tray.fuse(gussetXZ([
+      [handleRibRootX, handleRibBaseZ],
+      [handleRibRootX, handleRibBaseZ + handleRibRun],
+      [handleRibRootX + handleRibRun, handleRibBaseZ],
+    ], ribY, handleRibWidth));
+  }
   for (const x of d.screwXs) for (const y of d.screwYs) {
     tray = tray.cut(cylinder(x, y, d.joinZ - 0.1, d.drop / 2, d.deckThickness + 0.2));
     tray = tray.cut(cone(x, y, d.deckTop - 0.3, d.drop / 2, d.drop / 2 + TRAY_ENTRY_RADIAL_FLARE, 0.3));
@@ -119,18 +133,16 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   // The plug keys into the tray's front rim cutout with 0.2 mm lateral
   // clearance. It reaches the deck so a closed lid cannot let screws escape.
   lid = lid.fuse(rounded(0.1, drainY + 0.1, d.deckTop, frameWall - 0.2, drainWidth - 0.2, d.top - d.deckTop + 0.1, 0.5));
-  // A short front tab gives the long discharge plug a broad root. Its 45-degree
-  // gusset lands on the plug below the lid, while the whole reinforcement stays
-  // in front of the tray so it cannot foul the rim, magnet pockets, or outlet.
+  // Brace the long discharge plug from the underside of the lid, inside the
+  // tray opening. The 45-degree face meets the plug without extending the lid
+  // past its front edge or reaching the first screw station.
   const gussetRun = 4.2;
-  const gussetTopX = 1;
-  lid = lid
-    .fuse(box(gussetTopX - gussetRun, drainY + 0.1, d.top, gussetRun + 0.5, drainWidth - 0.2, 3.4))
-    .fuse(gussetXZ([
-      [gussetTopX - gussetRun, d.top],
-      [gussetTopX, d.top],
-      [gussetTopX, d.top - gussetRun],
-    ], drainY + 0.1, drainWidth - 0.2));
+  const gussetPlugX = frameWall - 0.3;
+  lid = lid.fuse(gussetXZ([
+    [gussetPlugX, d.top],
+    [gussetPlugX + gussetRun, d.top],
+    [gussetPlugX, d.top - gussetRun],
+  ], drainY + 0.1, drainWidth - 0.2));
   for (const p of d.magnets) {
     tray = tray.cut(cylinder(p.x, p.y, d.top - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
     lid = lid.cut(cylinder(p.x, p.y, d.top - 0.1, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
@@ -209,17 +221,30 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     throw new Error("Tray and slider hook handles must retain their reinforced thickness");
   }
   completed.push("Tray and slider storage handles retain reinforced thickness");
+  const handleRibProbeX = handleRibRootX + handleRibRun / 2;
+  for (const ribY of handleRibYs) {
+    const probeY = ribY + handleRibWidth / 2;
+    if (intersectionVolume(tray, cylinder(handleRibProbeX, probeY, handleRibBaseZ + 0.8, 0.12, 0.12)) < 0.003 ||
+        intersectionVolume(tray, cylinder(handleRibProbeX, probeY, handleRibBaseZ + 2.4, 0.12, 0.12)) >= 1e-5) {
+      throw new Error("Tray storage handle must retain its two 45-degree root ribs");
+    }
+  }
+  completed.push("Tray storage handle retains two 45-degree root ribs");
   const drainProbe = cylinder(frameWall / 2, d.width / 2, d.deckTop + 0.2, 0.3, 0.5);
   if (intersectionVolume(tray, drainProbe) >= 1e-5 || intersectionVolume(lid, drainProbe) < 0.05) {
     throw new Error("Tray discharge cutout or closed-lid retention plug is missing");
   }
   const gussetY = d.width / 2;
-  const gussetMaterial = cylinder(-1.2, gussetY, d.top - 1.75, 0.12, 0.12);
-  const belowGusset = cylinder(-1.2, gussetY, d.top - 2.25, 0.12, 0.12);
-  if (intersectionVolume(lid, gussetMaterial) < 0.003 || intersectionVolume(lid, belowGusset) >= 1e-5) {
-    throw new Error("Lid discharge plug must retain its 45-degree external gusset");
+  const gussetMiddleX = gussetPlugX + gussetRun / 2;
+  const gussetMaterial = cylinder(gussetMiddleX, gussetY, d.top - 1.75, 0.12, 0.12);
+  const belowGusset = cylinder(gussetMiddleX, gussetY, d.top - 2.7, 0.12, 0.12);
+  const gussetMaterialVolume = intersectionVolume(lid, gussetMaterial);
+  const belowGussetVolume = intersectionVolume(lid, belowGusset);
+  const lidFrontX = lid.boundingBox.bounds[0][0];
+  if (gussetMaterialVolume < 0.003 || belowGussetVolume >= 1e-5 || lidFrontX < -1e-5) {
+    throw new Error("Lid discharge plug must retain its 45-degree internal gusset without a front protrusion");
   }
-  completed.push("Overlapping storage handles, closed-lid discharge plug, and 45-degree gusset verified");
+  completed.push("Overlapping storage handles, closed-lid discharge plug, and 45-degree internal gusset verified");
   if (settings.joint === "screws") {
     const p = d.joints[0];
     if (intersectionVolume(base, cylinder(p.x + 1.8, p.y, 2.45, 0.08, 0.15)) >= 1e-5 ||
