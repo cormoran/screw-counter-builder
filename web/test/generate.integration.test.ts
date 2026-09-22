@@ -18,6 +18,10 @@ describe("browser CAD integration", () => {
     expect(short.diagnostics.slider.volume).toBeGreaterThan(long.diagnostics.slider.volume);
     expect(short.dimensions.detent?.springLength).toBe(12);
     expect(long.dimensions.detent?.springLength).toBe(18);
+    for (const part of ["base", "tray", "lid"] as const) {
+      expect(short.files[`${part}.stl`]).toBe(long.files[`${part}.stl`]);
+    }
+    expect(short.files["slider.stl"]).not.toBe(long.files["slider.stl"]);
   }, 120_000);
 
   it("generates M2 4x2 exports and diagnostics", async () => {
