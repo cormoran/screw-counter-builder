@@ -15,5 +15,6 @@ export type {
   SettingsInput,
   ScrewPreset,
   ScrewSize,
+  TriangleMesh,
   VerificationResult,
 } from "./types";

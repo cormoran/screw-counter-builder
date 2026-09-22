@@ -107,12 +107,21 @@ export type PartDiagnostic = {
   bounds: { min: [number, number, number]; max: [number, number, number] };
 };
 
+/** Triangle buffers in millimetres and assembled CAD coordinates. */
+export type TriangleMesh = {
+  positions: Float32Array;
+  normals: Float32Array;
+  indices: Uint32Array;
+};
+
 export interface GeneratedModel {
   files: Record<GeneratedFileName, Blob>;
   dimensions: DerivedDimensions;
   warnings: string[];
   verification: VerificationResult;
   diagnostics: Record<ModelPart, PartDiagnostic>;
+  /** Display mesh per part. UI transforms these for assembled/exploded views. */
+  partMeshes: Record<ModelPart, TriangleMesh>;
 }
 
 export interface GenerateOptions {

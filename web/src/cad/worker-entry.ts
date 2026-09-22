@@ -7,7 +7,14 @@ type WorkerReply =
   | { type: 'error'; message: string }
 
 function reply(message: WorkerReply) {
-  self.postMessage(message)
+  if (message.type !== 'complete') {
+    self.postMessage(message)
+    return
+  }
+  const transfer = Object.values(message.model.partMeshes).flatMap((mesh) => [
+    mesh.positions.buffer as ArrayBuffer, mesh.normals.buffer as ArrayBuffer, mesh.indices.buffer as ArrayBuffer,
+  ])
+  self.postMessage(message, { transfer })
 }
 
 self.onmessage = async (event: MessageEvent<Settings>) => {

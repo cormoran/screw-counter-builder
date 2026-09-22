@@ -2,7 +2,7 @@ import initOpenCascade from "replicad-opencascadejs";
 import openCascadeWasm from "replicad-opencascadejs/wasm?url";
 import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, sketchCircle, sketchRoundedRectangle, topMost } from "replicad";
 import type { Shape3D } from "replicad";
-import type { DerivedDimensions, GenerateOptions, GeneratedFileName, PartDiagnostic, Settings, VerificationResult } from "./types";
+import type { DerivedDimensions, GenerateOptions, GeneratedFileName, PartDiagnostic, Settings, TriangleMesh, VerificationResult } from "./types";
 
 let kernel: Promise<void> | undefined;
 const ready = () => (kernel ??= initOpenCascade({ locateFile: () => openCascadeWasm }).then(setOC));
@@ -38,7 +38,7 @@ const printOrientation = (shape: Shape3D): Shape3D => {
 };
 
 /** OpenCascade B-Rep port of `design_screw_counter.py`'s `build()`. */
-export async function buildWithReplicad(settings: Settings, d: DerivedDimensions, options: GenerateOptions): Promise<{ files: Partial<Record<GeneratedFileName, Blob>>; warnings: string[]; verification: VerificationResult; diagnostics: Record<"base" | "tray" | "slider" | "lid", PartDiagnostic> }> {
+export async function buildWithReplicad(settings: Settings, d: DerivedDimensions, options: GenerateOptions): Promise<{ files: Partial<Record<GeneratedFileName, Blob>>; warnings: string[]; verification: VerificationResult; diagnostics: Record<"base" | "tray" | "slider" | "lid", PartDiagnostic>; partMeshes: Record<"base" | "tray" | "slider" | "lid", TriangleMesh> }> {
   await ready();
   const aborted = () => { if (options.signal?.aborted) throw new DOMException("CAD generation was cancelled", "AbortError"); };
   aborted();
@@ -142,9 +142,17 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     const [min, max] = part.boundingBox.bounds;
     return [name, { volume: measureShapeVolumeProperties(part).volume, bounds: { min, max } }];
   })) as Record<"base" | "tray" | "slider" | "lid", PartDiagnostic>;
+  const partMeshes = Object.fromEntries(Object.entries(parts).map(([name, part]) => {
+    const mesh = part.mesh({ tolerance: 0.08, angularTolerance: 0.2 });
+    return [name, {
+      positions: Float32Array.from(mesh.vertices),
+      normals: Float32Array.from(mesh.normals),
+      indices: Uint32Array.from(mesh.triangles),
+    }];
+  })) as Record<"base" | "tray" | "slider" | "lid", TriangleMesh>;
   return { files: {
     "base.stl": printOrientation(base.clone()).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }), "tray.stl": printOrientation(tray.clone()).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }),
     "slider.stl": printOrientation(slider.clone()).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }), "lid.stl": printOrientation(lid.clone().rotate(180, [0, 0, 0], [1, 0, 0])).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }),
     "assembly.step": exportSTEP([{ shape: base, name: "base" }, { shape: tray, name: "tray" }, { shape: slider, name: "slider" }, { shape: lid, name: "lid" }]),
-  }, warnings: ["Browser CAD output has not been compared against the Python B-Rep baseline or physically print-tested."], verification: { completed, pending: ["Full per-station release and retention checks", "Full Python B-Rep numeric comparison"] }, diagnostics };
+  }, warnings: ["Browser CAD output has not been compared against the Python B-Rep baseline or physically print-tested."], verification: { completed, pending: ["Full per-station release and retention checks", "Full Python B-Rep numeric comparison"] }, diagnostics, partMeshes };
 }
