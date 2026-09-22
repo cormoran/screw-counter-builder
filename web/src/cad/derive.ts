@@ -25,7 +25,7 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
   const sliderZ = floor + c.slideClearance;
   const sliderThickness = 2;
   const joinZ = sliderZ + sliderThickness + c.slideClearance;
-  const deckThickness = 1.6;
+  const deckThickness = 0.75;
   const deckTop = joinZ + deckThickness;
   // The lid lip projects 1.2 mm below the mating plane.
   const top = deckTop + c.screwSpaceHeight + 1.2;
@@ -40,10 +40,11 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
     magnetPocketDepth: c.magnetThickness + c.magnetDepthClearance,
   };
   if (c.detent) {
-    // 0.7 mm nominal engagement at the rail, independent of slide clearance.
-    const tipY = width - wall - 0.4;
+    // Keep 0.7 mm of nominal engagement as the nose diameter changes.
+    const noseRadius = c.detentDiameter / 2;
+    const tipY = width - wall - (noseRadius - 0.7);
     result.detent = {
-      tipX: 12, tipY, noseRadius: 1.1, notchRadius: 1.2,
+      tipX: 12, tipY, noseRadius, notchRadius: noseRadius + 0.1,
       notchX: Array.from({ length: c.columns + 1 }, (_, index) => 12 + index * pitch),
       springLength: c.detentSpringLength, springWidth: c.detentSpringWidth, springHeight: sliderThickness,
       reliefGap: 1.2, nominalDeflection: 0.7, maxLateralDeflection: 0.8,
