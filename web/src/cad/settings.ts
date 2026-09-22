@@ -6,10 +6,10 @@ export const SCREW_PRESETS: Readonly<Record<string, ScrewPreset>> = {
   M3: { shaft: 3, head: 6, slot: 3.6, pitch: 10 },
 };
 
-/** Diametral clearance at the straight through-hole, tuned from print feedback. */
-export const TRAY_HOLE_DIAMETER_CLEARANCE = 0.3;
-/** A 45-degree, 0.3 mm chamfer around the top of each tray hole. */
-export const TRAY_ENTRY_RADIAL_FLARE = 0.3;
+/** Side-length clearance at the straight square through-hole, tuned from print feedback. */
+export const TRAY_HOLE_SIDE_CLEARANCE = 0.3;
+/** A 45-degree, 0.3 mm chamfer around the top of each square tray hole. */
+export const TRAY_ENTRY_FLARE = 0.3;
 export const RELEASE_WINDOW_DIAMETER_CLEARANCE = 1.0;
 
 export function resolveScrewDimensions(settings: Settings): { headDiameter: number; shaftDiameter: number; slotWidth: number; pitch: number } | null {
@@ -40,7 +40,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   magnetDiameterClearance: 0.3,
   magnetDepthClearance: 0.15,
   slideClearance: 0.2,
-  trayHoleClearance: TRAY_HOLE_DIAMETER_CLEARANCE,
+  trayHoleClearance: TRAY_HOLE_SIDE_CLEARANCE,
   screwSpaceHeight: 15,
   headDiameter: null,
   shaftDiameter: null,
