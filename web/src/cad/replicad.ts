@@ -1,6 +1,7 @@
 import initOpenCascade from "replicad-opencascadejs";
 import openCascadeWasm from "replicad-opencascadejs/wasm?url";
-import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, Sketcher, sketchCircle, sketchRoundedRectangle, topMost } from "replicad";
+import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, Sketcher, sketchCircle, sketchRectangle, sketchRoundedRectangle, topMost } from "replicad";
+import { TRAY_ENTRY_FLARE } from "./settings";
 import type { Shape3D } from "replicad";
 import type { DerivedDimensions, GenerateOptions, GeneratedFileName, PartDiagnostic, Settings, TriangleMesh, VerificationResult } from "./types";
 
@@ -50,7 +51,7 @@ export function partKeys(settings: Settings, d: DerivedDimensions) {
   return {
     base: JSON.stringify([d.length, d.width, d.joinZ, d.wall, d.floor, d.pitch, settings.columns, d.screwXs, d.screwYs, d.drop, d.joints,
       d.detent ? [d.detent.tipY, d.detent.notchX, d.detent.notchRadius] : null, settings.joint, d.funnelMounts, d.funnelMountZ, d.funnelBasePocketDepth, d.baseScrewHeadSeat, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment]),
-    tray: JSON.stringify([d.length, d.width, d.rim, d.joinZ, d.deckThickness, d.deckTop, d.top, d.baseScrewHeadSeat, d.funnelBasePocketDepth, d.sliderInsetY, d.joints, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.joint]),
+    tray: JSON.stringify([d.trayStyle, d.screwXs, d.screwYs, d.drop, d.length, d.width, d.rim, d.joinZ, d.deckThickness, d.deckTop, d.top, d.baseScrewHeadSeat, d.funnelBasePocketDepth, d.sliderInsetY, d.joints, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.joint]),
     funnel: JSON.stringify([d.length, d.width, d.funnelOutletX, d.funnelDepth, d.funnelMountZ, d.funnelBasePocketDepth, d.funnelMounts, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment, settings.funnelOutlet]),
     slider: JSON.stringify([d.width, d.sliderInsetY, d.sliderZ, d.length, d.sliderThickness, d.pitch, settings.columns, d.releaseX, d.window, d.slot, d.screwXs, d.screwYs, d.detent]),
     lid: JSON.stringify([d.top, d.length, d.width, d.rim, d.deckTop, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.lidAlignment, settings.lidStyle]),
@@ -164,10 +165,30 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     // slider captive from above. The floor outside the slider stays solid.
     const deckOpeningX = d.rim;
     const deckOpeningLength = d.length - 2 * d.rim;
-    tray = tray.cut(rounded(
-      deckOpeningX, d.sliderInsetY + sliderGuideWidth, d.joinZ - 0.1,
-      deckOpeningLength, d.width - 2 * (d.sliderInsetY + sliderGuideWidth), d.deckThickness + 0.2, trayOpeningCornerRadius,
-    ));
+    if (d.trayStyle === "cutout") {
+      tray = tray.cut(rounded(
+        deckOpeningX, d.sliderInsetY + sliderGuideWidth, d.joinZ - 0.1,
+        deckOpeningLength, d.width - 2 * (d.sliderInsetY + sliderGuideWidth), d.deckThickness + 0.2, trayOpeningCornerRadius,
+      ));
+    } else {
+      // Reuse one cutter and release each intermediate deck immediately: a
+      // large grid otherwise retains every increasingly complex boolean result.
+      const straight = box(-d.drop / 2, -d.drop / 2, d.joinZ - 0.1, d.drop, d.drop, d.deckThickness + 0.2);
+      const flare = sketchRectangle(d.drop, d.drop, { plane: "XY", origin: [0, 0, d.deckTop - TRAY_ENTRY_FLARE] })
+        .loftWith(sketchRectangle(d.drop + 2 * TRAY_ENTRY_FLARE, d.drop + 2 * TRAY_ENTRY_FLARE,
+          { plane: "XY", origin: [0, 0, d.deckTop] }), { ruled: true });
+      const cutter = straight.fuse(flare);
+      straight.delete();
+      flare.delete();
+      try {
+        for (const x of d.screwXs) for (const y of d.screwYs) {
+          const positioned = cutter.clone().translate(x, y, 0);
+          const previous: Shape3D = tray!;
+          try { tray = previous.cut(positioned); } finally { positioned.delete(); }
+          previous.delete();
+        }
+      } finally { cutter.delete(); }
+    }
     let rim = rounded(0, 0, d.deckTop, d.length, d.width, d.top - d.deckTop, 4)
       .cut(rounded(frameWall, frameWall, d.deckTop - 0.1, d.length - 2 * frameWall, d.width - 2 * frameWall, d.top - d.deckTop + 0.2, 1.6));
     // One reinforced corner carries each magnet above its assembly screw.
@@ -422,11 +443,26 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const roundedCornerOpening = cylinder(d.rim + trayOpeningCornerRadius, trayOpeningY + trayOpeningCornerRadius, d.joinZ, 0.1, d.deckThickness);
   if (intersectionVolume(tray, trayOpening) >= 1e-5 ||
       intersectionVolume(tray, lowGuide) < 0.01 || intersectionVolume(tray, highGuide) < 0.01 ||
-      intersectionVolume(tray, lowOuterFloor) < 0.01 || intersectionVolume(tray, highOuterFloor) < 0.01 ||
-      intersectionVolume(tray, roundedCornerMaterial) < 0.001 || intersectionVolume(tray, roundedCornerOpening) >= 1e-5) {
+      intersectionVolume(tray, lowOuterFloor) < 0.01 || intersectionVolume(tray, highOuterFloor) < 0.01) {
     throw new Error("Tray floor must retain rounded opening corners, both slider guides, and solid outer panels");
   }
-  completed.push("Full base floor, square outlets, and rounded tray opening with slider guides and solid outer panels verified");
+  if (d.trayStyle === "cutout") {
+    if (intersectionVolume(tray, roundedCornerMaterial) < 0.001 || intersectionVolume(tray, roundedCornerOpening) >= 1e-5) throw new Error("Tray cutout must retain rounded corners");
+    completed.push("Full base floor, square outlets, and rounded tray opening with slider guides and solid outer panels verified");
+  } else {
+    // The deck repeats at each pitch; inspect both ends in both directions.
+    for (const x of new Set([d.screwXs[0], d.screwXs.at(-1)!])) for (const y of new Set([d.screwYs[0], d.screwYs.at(-1)!])) {
+      const corner = cylinder(x + d.drop / 2 - 0.12, y + d.drop / 2 - 0.12, d.joinZ + 0.05, 0.04, 0.15);
+      const wall = cylinder(x + d.drop / 2 + 0.15, y, d.joinZ + 0.05, 0.04, 0.15);
+      const flare = cylinder(x + d.drop / 2 + 0.12, y, d.deckTop - 0.06, 0.03, 0.04);
+      try {
+        if (intersectionVolume(tray, corner) >= 1e-5 || intersectionVolume(tray, wall) < 0.0007 || intersectionVolume(tray, flare) >= 1e-5) throw new Error("Tray square holes must retain their walls and entry flare");
+      } finally { corner.delete(); wall.delete(); flare.delete(); }
+    }
+    const bridge = cylinder(firstHoleX - d.drop / 2 - 0.7, firstHoleY, d.joinZ, 0.1, d.deckThickness);
+    if (intersectionVolume(tray, bridge) < 0.02) throw new Error("Square-hole tray must retain its deck between openings");
+    completed.push("Square tray holes, entry flares, solid deck, and unchanged square base outlets verified");
+  }
   const fullReleaseTravel = settings.columns * d.pitch;
   // Exclude the click tip here so the opposite-side rigid rib must catch.
   const sliderWithoutClickTip = d.detent

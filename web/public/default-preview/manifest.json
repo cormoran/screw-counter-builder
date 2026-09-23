@@ -8,6 +8,8 @@
     "rows": 4,
     "columns": 10,
     "screw": "M2",
+    "screwLength": 5,
+    "trayStyle": "auto",
     "joint": "screws",
     "lidAlignment": "magnets",
     "lidStyle": "full",
@@ -32,6 +34,6 @@
     "lid": "lid.mesh",
     "funnel": "funnel.mesh"
   },
-  "rawBytes": 1243140,
-  "gzipBytes": 385700
+  "rawBytes": 1284756,
+  "gzipBytes": 393316
 }

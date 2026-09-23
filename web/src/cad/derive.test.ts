@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { deriveDimensions, validateSettings } from "./index";
 
 describe("browser CAD dimensions", () => {
+  it("selects the tray by the inclusive 5 mm boundary and preserves explicit choices", () => {
+    expect(deriveDimensions().trayStyle).toBe("holes");
+    for (const screwLength of [1, 4.9, 5]) expect(deriveDimensions({ screwLength }).trayStyle).toBe("holes");
+    for (const screwLength of [5.1, 10, 100]) expect(deriveDimensions({ screwLength }).trayStyle).toBe("cutout");
+    expect(deriveDimensions({ screwLength: 3, trayStyle: "cutout" }).trayStyle).toBe("cutout");
+    expect(deriveDimensions({ screwLength: 12, trayStyle: "holes" }).trayStyle).toBe("holes");
+    for (const screwLength of [0, 101, NaN, Infinity, null]) expect(validateSettings({ screwLength: screwLength as number })).not.toEqual([]);
+    expect(validateSettings({ trayStyle: "unknown" as "auto" })).not.toEqual([]);
+  });
+
   it("moves coaxial corner mounts outward while retaining pocket walls", () => {
     expect(deriveDimensions().joints[0]).toEqual({ x: 4.5, y: 4.5 });
     for (const magnetDiameter of [3, 5, 6, 8]) for (const magnetDiameterClearance of [0, 0.6]) {

@@ -22,6 +22,12 @@ describe('settings across a page reload', () => {
     expect(loadSettings().rows).toBe(5)
   })
 
+  it('restores the explicit tray style and screw length across reloads', () => {
+    tabStorage()
+    saveSettings({ ...DEFAULT_SETTINGS, screwLength: 8, trayStyle: 'holes' })
+    expect(loadSettings()).toMatchObject({ screwLength: 8, trayStyle: 'holes' })
+  })
+
   it('falls back to defaults for corrupt stored data', () => {
     const values = tabStorage()
     values.set('screw-counter-settings-v1', '{broken')

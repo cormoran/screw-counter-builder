@@ -77,12 +77,23 @@ function getPreviewWorker() {
   if (previewWorker) return previewWorker
 
   const worker = new Worker(new URL('./preview-worker-entry.ts', import.meta.url), { type: 'module' })
+  // OpenCascade retains native allocations across jobs. Keep a short cache
+  // window, then release the whole WASM heap once all queued work has settled.
+  let completedJobs = 0
+  const retireIfIdle = () => {
+    if (completedJobs < 4 || pendingRequests.size > 0 || previewWorker !== worker) return
+    if (idleTermination) clearTimeout(idleTermination)
+    idleTermination = undefined
+    worker.terminate()
+    previewWorker = undefined
+  }
   worker.onmessage = (event: MessageEvent<WorkerReply>) => {
     const reply = event.data
+    if (reply.type !== 'progress') completedJobs = reply.type === 'error' ? Infinity : completedJobs + 1
     const pending = pendingRequests.get(reply.id)
     // An aborted or superseded caller can leave work in the persistent worker.
     // Do not let that work update a later request.
-    if (!pending) return
+    if (!pending) { retireIfIdle(); return }
 
     if (reply.type === 'progress') {
       pending.onProgress?.(reply.progress)
@@ -101,6 +112,7 @@ function getPreviewWorker() {
       removePendingRequest(reply.id)
       pending.reject(new Error(reply.message))
     }
+    retireIfIdle()
   }
   worker.onerror = (event) => failWorker(worker, event.message || 'CAD preview worker failed')
   previewWorker = worker

@@ -12,6 +12,9 @@ export interface Settings {
   rows: number;
   columns: number;
   screw: ScrewSize;
+  /** Target screw length; selects the tray style in auto mode. */
+  screwLength: number;
+  trayStyle: "auto" | "holes" | "cutout";
   joint: JointType;
   lidAlignment: LidAlignment;
   lidStyle: "full" | "cutout";
@@ -22,7 +25,7 @@ export interface Settings {
   magnetDiameterClearance: number;
   magnetDepthClearance: number;
   slideClearance: number;
-  /** Extra side length beyond a measured screw head in each square base outlet. */
+  /** Extra side length beyond a measured screw head in each square base or tray opening. */
   trayHoleClearance: number;
   /** Free vertical space above the tray deck, below the lid lip, in mm. */
   screwSpaceHeight: number;
@@ -64,6 +67,7 @@ export interface DetentDimensions {
 
 /** Calculated dimensions shared by preview, CAD construction, and export metadata. */
 export interface DerivedDimensions {
+  trayStyle: "holes" | "cutout";
   shaft: number;
   head: number;
   slot: number;

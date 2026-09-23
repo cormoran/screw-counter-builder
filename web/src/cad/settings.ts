@@ -12,6 +12,7 @@ export const SCREW_PRESETS: Readonly<Record<string, ScrewPreset>> = {
 
 /** Side-length clearance at the straight square base outlet, tuned from print feedback. */
 export const BASE_HOLE_SIDE_CLEARANCE = 0.3;
+export const TRAY_ENTRY_FLARE = 0.3;
 export const RELEASE_WINDOW_DIAMETER_CLEARANCE = 1.0;
 
 export function resolveScrewDimensions(settings: Settings): { headDiameter: number; shaftDiameter: number; slotWidth: number; pitch: number } | null {
@@ -35,6 +36,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   rows: 4,
   columns: 10,
   screw: "M2",
+  screwLength: 5,
+  trayStyle: "auto",
   joint: "screws",
   lidAlignment: "magnets",
   lidStyle: "full",
@@ -69,6 +72,8 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   if (!Number.isInteger(settings.rows) || settings.rows < 1 || settings.rows > MAX_ROWS || !Number.isInteger(settings.columns) || settings.columns < 1 || settings.columns > MAX_COLUMNS) {
     errors.push(`rows and columns must be positive integers within ${MAX_ROWS} × ${MAX_COLUMNS}`);
   }
+  if (!Number.isFinite(settings.screwLength) || settings.screwLength < 1 || settings.screwLength > 100) errors.push("screwLength must be 1..100 mm");
+  if (!["auto", "holes", "cutout"].includes(settings.trayStyle)) errors.push("trayStyle must be auto, holes or cutout");
   if (settings.joint !== "screws" && settings.joint !== "glue") errors.push("joint must be screws or glue");
   if (!["full", "cutout"].includes(settings.lidStyle)) errors.push("lidStyle must be full or cutout");
   if (settings.lidAlignment !== "magnets" && settings.lidAlignment !== "pegs") errors.push("lidAlignment must be magnets or pegs");

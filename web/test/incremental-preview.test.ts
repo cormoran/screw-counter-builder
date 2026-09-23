@@ -8,6 +8,15 @@ vi.mock("replicad-opencascadejs/wasm?url", () => ({
 }));
 
 describe("incremental preview geometry", () => {
+  it("invalidates only the tray when automatic length selection crosses 5 mm", async () => {
+    const holes = await generatePreviewModel({ rows: 1, columns: 1, screwLength: 5 });
+    const cutout = await generatePreviewModel({ rows: 1, columns: 1, screwLength: 5.1 });
+    expect(holes.partMeshes.tray).not.toBe(cutout.partMeshes.tray);
+    for (const part of ["base", "slider", "lid", "funnel"] as const) expect(holes.partMeshes[part]).toBe(cutout.partMeshes[part]);
+    const stillCutout = await generatePreviewModel({ rows: 1, columns: 1, screwLength: 8 });
+    expect(stillCutout.partMeshes.tray).toBe(cutout.partMeshes.tray);
+  }, 120_000);
+
   it("reuses unrelated B-Rep meshes as individual parameters change", async () => {
     const initial = await generatePreviewModel({ rows: 2, columns: 2 });
     const spring = await generatePreviewModel({ rows: 2, columns: 2, detentSpringLength: 12 });

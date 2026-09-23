@@ -364,6 +364,7 @@ export default function App() {
           {displayMeshes ? <Suspense fallback={<div className="preview-empty">{text(language, 'loading3d')}</div>}><ModelViewer language={language} meshes={displayMeshes} dimensions={isPrintPreview ? null : previewMode === '2d' ? dimensions : displayDimensions} mode={printPreviewPlate ? 'assembled' : previewMode} cameraState={printPreviewPlate ? printCamera : assemblyCamera} resetKey={previewViewReset} {...(printPreviewPlate ? { printPlateSize: { width: printPreviewPlate.width, depth: printPreviewPlate.depth } } : {})} /></Suspense> : <DimensionPreview dimensions={dimensions} language={language} />}
           {shownDimensions && <dl className="dimensions">
             <div><dt>{text(language, 'overallSize')}</dt><dd>{fmt(language, shownDimensions.length + 19)} × {fmt(language, shownDimensions.width)} × {fmt(language, shownDimensions.top + 3.4 + shownDimensions.funnelDepth)} mm</dd></div>
+            <div><dt>{text(language, 'fieldTrayStyle')}</dt><dd>{text(language, shownDimensions.trayStyle === 'holes' ? 'trayHoles' : 'trayCutout')}</dd></div>
             <div><dt>{text(language, 'funnelDepth')}</dt><dd>{fmt(language, shownDimensions.funnelDepth)} mm</dd></div>
             <div><dt>{text(language, 'pitch')}</dt><dd>{fmt(language, shownDimensions.pitch)} mm</dd></div>
             <div><dt>{text(language, 'capacity')}</dt><dd>{shownDimensions.screwXs.length * shownDimensions.screwYs.length} {text(language, 'pieces')}</dd></div>

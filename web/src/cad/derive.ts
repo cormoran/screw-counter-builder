@@ -34,6 +34,7 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
   const magnets = [magnetCenter, length - magnetCenter].flatMap((x) => [magnetCenter, width - magnetCenter].map((y) => ({ x, y })));
   const joints = magnets.map(({ x, y }) => ({ x, y }));
   const result: DerivedDimensions = {
+    trayStyle: c.trayStyle === "auto" ? (c.screwLength <= 5 ? "holes" : "cutout") : c.trayStyle,
     shaft, head, slot, drop, window, pitch, rim, wall, sliderInsetY, releaseX,
     screwXs, screwYs, length, width, floor, sliderZ, sliderThickness, joinZ, deckThickness, deckTop, screwSpaceHeight: c.screwSpaceHeight, top,
     joints, magnets,

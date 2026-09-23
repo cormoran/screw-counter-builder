@@ -62,10 +62,21 @@ function getModelWorker() {
   if (modelWorker) return modelWorker
 
   const worker = new Worker(new URL('./worker-entry.ts', import.meta.url), { type: 'module' })
+  // OpenCascade retains native allocations across jobs. Keep a short cache
+  // window, then release the whole WASM heap once all queued work has settled.
+  let completedJobs = 0
+  const retireIfIdle = () => {
+    if (completedJobs < 4 || pendingRequests.size > 0 || modelWorker !== worker) return
+    if (idleTermination) clearTimeout(idleTermination)
+    idleTermination = undefined
+    worker.terminate()
+    modelWorker = undefined
+  }
   worker.onmessage = (event: MessageEvent<WorkerReply>) => {
     const reply = event.data
+    if (reply.type !== 'progress') completedJobs = reply.type === 'error' ? Infinity : completedJobs + 1
     const pending = pendingRequests.get(reply.id)
-    if (!pending) return
+    if (!pending) { retireIfIdle(); return }
 
     if (reply.type === 'progress') {
       pending.onProgress?.(reply.progress)
@@ -76,6 +87,7 @@ function getModelWorker() {
       removePendingRequest(reply.id)
       pending.reject(new Error(reply.message))
     }
+    retireIfIdle()
   }
   worker.onerror = (event) => failWorker(worker, event.message || 'CAD worker failed')
   modelWorker = worker
