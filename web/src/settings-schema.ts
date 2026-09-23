@@ -56,7 +56,7 @@ export function getSettingsFields(language: Language): readonly Field[] {
     { key: 'screwSpaceHeight', category: 'operation', label: t('fieldScrewSpaceHeight'), description: t('fieldScrewSpaceHeightDescription'), kind: 'number', unit: 'mm', min: 3.5, max: 30, step: 0.1 },
     { key: 'joint', category: 'operation', label: t('fieldJoint'), description: t('fieldJointDescription'), kind: 'select', options: [{ value: 'screws', label: t('screws') }, { value: 'glue', label: t('glue') }] },
     { key: 'funnelAlignment', category: 'operation', label: t('fieldFunnelAlignment'), description: t('fieldFunnelAlignmentDescription'), kind: 'select', options: [{ value: 'magnets', label: t('magnets') }, { value: 'pegs', label: t('pegs') }] },
-    { key: 'funnelOutlet', category: 'operation', label: t('fieldFunnelOutlet'), description: t('fieldFunnelOutletDescription'), kind: 'number', unit: 'mm', min: 10, max: 24, step: 1 },
+    { key: 'funnelOutlet', category: 'operation', label: t('fieldFunnelOutlet'), description: t('fieldFunnelOutletDescription'), kind: 'number', unit: 'mm', min: 5, max: 24, step: 1 },
     { key: 'lidStyle', category: 'operation', label: t('fieldLidStyle'), description: t('fieldLidStyleDescription'), kind: 'select', options: [{ value: 'full', label: t('lidFull') }, { value: 'cutout', label: t('lidCutout') }] },
     { key: 'lidAlignment', category: 'operation', label: t('fieldLidAlignment'), description: t('fieldLidAlignmentDescription'), kind: 'select', options: [{ value: 'magnets', label: t('magnets') }, { value: 'pegs', label: t('pegs') }] },
     { key: 'detent', category: 'operation', label: t('fieldDetent'), description: t('fieldDetentDescription'), kind: 'boolean' },

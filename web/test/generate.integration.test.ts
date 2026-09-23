@@ -30,7 +30,7 @@ describe("browser CAD integration", () => {
     { funnelAlignment: "pegs", magnetThickness: 1 },
     { funnelAlignment: "pegs", magnetThickness: 3 },
   ] as const)("keeps the base flat and screw access clear with minimum-diameter mounts: %j", async (attachment) => {
-    const model = await generateModel({ rows: 1, columns: 1, magnetDiameter: 5, magnetDiameterClearance: 0, ...attachment });
+    const model = await generateModel({ rows: 1, columns: 1, magnetDiameter: 5, magnetDiameterClearance: 0, funnelOutlet: 5, ...attachment });
     expect(model.diagnostics.base.bounds.min[2]).toBeCloseTo(0);
     expect(model.verification.completed).toContain("Flat base underside and recessed screw heads clear funnel magnets or pegs");
     expect(model.verification.completed).toContain("Rounded funnel corners, outer edges, and outlet verified");
@@ -39,7 +39,7 @@ describe("browser CAD integration", () => {
   }, 120_000);
 
   it.each([
-    { magnetDiameter: 3, magnetThickness: 1, magnetDepthClearance: 0, funnelOutlet: 10 },
+    { magnetDiameter: 3, magnetThickness: 1, magnetDepthClearance: 0, funnelOutlet: 5 },
     { magnetDiameter: 8, magnetThickness: 3, magnetDepthClearance: 0.3, funnelOutlet: 24 },
   ])("keeps small and large funnel mounts clear: %j", async (dimensions) => {
     const model = await generateModel({ rows: 1, columns: 1, joint: "glue", lidStyle: "cutout", lidAlignment: "pegs", funnelAlignment: "pegs", ...dimensions });

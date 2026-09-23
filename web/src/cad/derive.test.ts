@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveDimensions, validateSettings } from "./index";
+import { DEFAULT_SETTINGS, deriveDimensions, validateSettings } from "./index";
 
 describe("browser CAD dimensions", () => {
   it("selects the tray by the inclusive 5 mm boundary and preserves explicit choices", () => {
@@ -10,6 +10,13 @@ describe("browser CAD dimensions", () => {
     expect(deriveDimensions({ screwLength: 12, trayStyle: "holes" }).trayStyle).toBe("holes");
     for (const screwLength of [0, 101, NaN, Infinity, null]) expect(validateSettings({ screwLength: screwLength as number })).not.toEqual([]);
     expect(validateSettings({ trayStyle: "unknown" as "auto" })).not.toEqual([]);
+  });
+
+  it("defaults the outlet to 10 mm and accepts 5 mm while retaining head clearance", () => {
+    expect(DEFAULT_SETTINGS.funnelOutlet).toBe(10);
+    for (const funnelOutlet of [5, 10, 24]) expect(validateSettings({ funnelOutlet })).toEqual([]);
+    for (const funnelOutlet of [4.9, 24.1, NaN]) expect(validateSettings({ funnelOutlet })).toContain("funnelOutlet must be 5..24 mm");
+    expect(validateSettings({ screw: "M3", funnelOutlet: 5 })).toContain("Funnel outlet needs at least head + 1 mm");
   });
 
   it("moves coaxial corner mounts outward while retaining pocket walls", () => {
@@ -31,7 +38,7 @@ describe("browser CAD dimensions", () => {
       expect(d.funnelMountZ).toBeCloseTo(-0.65);
       expect(d.baseScrewHeadSeat).toBeCloseTo(3.8);
       expect(d.funnelOutletX).toBeLessThan(d.length / 2);
-      expect(d.funnelOutletX - 8).toBeGreaterThan(2.4);
+      expect(d.funnelOutletX - DEFAULT_SETTINGS.funnelOutlet / 2).toBeGreaterThan(2.4);
     }
     expect(validateSettings({ magnetDiameter: 4.9 })).toContain("Screw joints need magnet or peg diameter at least 5 mm for screw access");
     expect(validateSettings({ magnetDiameter: 5 })).toEqual([]);

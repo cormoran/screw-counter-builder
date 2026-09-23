@@ -14,7 +14,7 @@
     "lidAlignment": "magnets",
     "lidStyle": "full",
     "funnelAlignment": "magnets",
-    "funnelOutlet": 16,
+    "funnelOutlet": 10,
     "magnetDiameter": 6,
     "magnetThickness": 2,
     "magnetDiameterClearance": 0.3,
@@ -34,6 +34,6 @@
     "lid": "lid.mesh",
     "funnel": "funnel.mesh"
   },
-  "rawBytes": 1284756,
-  "gzipBytes": 393316
+  "rawBytes": 1240572,
+  "gzipBytes": 366080
 }
