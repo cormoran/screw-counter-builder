@@ -7,7 +7,8 @@ describe("browser CAD dimensions", () => {
       const d = deriveDimensions({ columns });
       expect(d.funnelDepth).toBe(14);
       expect(d.funnelMounts).toEqual(d.joints);
-      expect(d.funnelMountZ + d.magnetPocketDepth).toBeCloseTo(-0.6);
+      expect(d.funnelMountZ).toBeCloseTo(-0.65);
+      expect(d.baseScrewHeadSeat).toBeCloseTo(3.8);
       expect(d.funnelOutletX).toBeLessThan(d.length / 2);
       expect(d.funnelOutletX - 8).toBeGreaterThan(2.4);
     }

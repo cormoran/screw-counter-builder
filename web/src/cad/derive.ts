@@ -1,4 +1,4 @@
-import { assertValidSettings, RELEASE_WINDOW_DIAMETER_CLEARANCE, resolveScrewDimensions } from "./settings";
+import { assertValidSettings, funnelBasePocketDepth, RELEASE_WINDOW_DIAMETER_CLEARANCE, resolveScrewDimensions } from "./settings";
 import type { DerivedDimensions, Settings, SettingsInput } from "./types";
 
 /** Browser CAD dimensions. Keep shape decisions here for future UI controls. */
@@ -37,8 +37,10 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
     screwXs, screwYs, length, width, floor, sliderZ, sliderThickness, joinZ, deckThickness, deckTop, screwSpaceHeight: c.screwSpaceHeight, top,
     joints, magnets,
     funnelDepth: 14,
-    // Seat the embedded magnets 0.6 mm below the assembly screw heads.
-    funnelMountZ: -(c.magnetThickness + c.magnetDepthClearance + 0.6),
+    // Only the magnet projects below the flat base; the funnel receives it.
+    funnelMountZ: c.funnelAlignment === "magnets" ? funnelBasePocketDepth(c) - c.magnetThickness - c.magnetDepthClearance : 0,
+    funnelBasePocketDepth: funnelBasePocketDepth(c),
+    baseScrewHeadSeat: 2.3 + funnelBasePocketDepth(c),
     funnelMounts: joints.map(({ x, y }) => ({ x, y })),
     funnelOutletX: 2.4 + c.funnelOutlet / 2 + (length - 4.8 - c.funnelOutlet) * 0.2,
     magnetPocketDiameter: c.magnetDiameter + c.magnetDiameterClearance,

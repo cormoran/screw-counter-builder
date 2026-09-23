@@ -1,5 +1,9 @@
 import type { Settings, SettingsInput, ScrewPreset } from "./types";
 
+// Limit the recess so the M2 head seat still fits inside the base corner land.
+export const funnelBasePocketDepth = (settings: Settings) => Math.min(1.5,
+  settings.magnetThickness + settings.magnetDepthClearance - (settings.funnelAlignment === "magnets" ? 0.5 : 0));
+
 export const SCREW_PRESETS: Readonly<Record<string, ScrewPreset>> = {
   "M1.5": { shaft: 1.5, head: 3, slot: 2.1, pitch: 8 },
   M2: { shaft: 2, head: 3.2, slot: 2.6, pitch: 8 },
@@ -85,7 +89,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   // The short corner screw stops below the magnet pocket, even at minimum height.
   const deckTop = 1.6 + 2 * settings.slideClearance + 2 + 0.75;
   const magnetPocketBottom = deckTop + settings.screwSpaceHeight + 1.2 - settings.magnetThickness - settings.magnetDepthClearance;
-  if (settings.joint === "screws" && magnetPocketBottom < 7.8) errors.push("Need at least 0.5 mm between the corner screw and magnet pocket; increase screw space height or use a thinner magnet");
+  if (settings.joint === "screws" && magnetPocketBottom < 7.8 + funnelBasePocketDepth(settings)) errors.push("Need at least 0.5 mm between the corner screw and magnet pocket; increase screw space height or use a thinner magnet");
   if (!preset) return errors;
   const numericValues = [
     settings.screwSpaceHeight, settings.magnetDiameter, settings.magnetThickness, settings.magnetDiameterClearance,

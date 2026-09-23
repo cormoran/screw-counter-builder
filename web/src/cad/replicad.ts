@@ -49,9 +49,9 @@ const partCache: Partial<Record<"base" | "tray" | "slider" | "lid" | "funnel", C
 export function partKeys(settings: Settings, d: DerivedDimensions) {
   return {
     base: JSON.stringify([d.length, d.width, d.joinZ, d.wall, d.floor, d.pitch, settings.columns, d.screwXs, d.screwYs, d.drop, d.joints,
-      d.detent ? [d.detent.tipY, d.detent.notchX, d.detent.notchRadius] : null, settings.joint, d.funnelMounts, d.funnelMountZ, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment]),
-    tray: JSON.stringify([d.length, d.width, d.rim, d.joinZ, d.deckThickness, d.deckTop, d.top, d.sliderInsetY, d.joints, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.joint]),
-    funnel: JSON.stringify([d.length, d.width, d.funnelOutletX, d.funnelDepth, d.funnelMountZ, d.funnelMounts, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment, settings.funnelOutlet]),
+      d.detent ? [d.detent.tipY, d.detent.notchX, d.detent.notchRadius] : null, settings.joint, d.funnelMounts, d.funnelMountZ, d.funnelBasePocketDepth, d.baseScrewHeadSeat, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment]),
+    tray: JSON.stringify([d.length, d.width, d.rim, d.joinZ, d.deckThickness, d.deckTop, d.top, d.baseScrewHeadSeat, d.funnelBasePocketDepth, d.sliderInsetY, d.joints, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.joint]),
+    funnel: JSON.stringify([d.length, d.width, d.funnelOutletX, d.funnelDepth, d.funnelMountZ, d.funnelBasePocketDepth, d.funnelMounts, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment, settings.funnelOutlet]),
     slider: JSON.stringify([d.width, d.sliderInsetY, d.sliderZ, d.length, d.sliderThickness, d.pitch, settings.columns, d.releaseX, d.window, d.slot, d.screwXs, d.screwYs, d.detent]),
     lid: JSON.stringify([d.top, d.length, d.width, d.rim, d.deckTop, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.lidAlignment, settings.lidStyle]),
   };
@@ -98,11 +98,10 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       // 45-degree face that prints without support and matches the tray socket.
       base = base.fuse(cone(p.x, p.y, d.joinZ, 3, 1.8, 1.2));
       if (settings.joint === "screws") {
-        // Preserve the flat 2.3 mm-deep seat for an M2 head. Above it, a 1.1 mm
-        // radial reduction over 1.1 mm of height makes a 45-degree printable roof.
+        // Recess the M2 head above the underside magnet, retaining its 45-degree roof.
         base = base.cut(cylinder(p.x, p.y, -0.1, 1.2, d.joinZ + 1.5))
-          .cut(cylinder(p.x, p.y, -0.1, 2.3, 2.4))
-          .cut(cone(p.x, p.y, 2.3, 2.3, 1.2, 1.1));
+          .cut(cylinder(p.x, p.y, -0.1, 2.3, d.baseScrewHeadSeat + 0.1))
+          .cut(cone(p.x, p.y, d.baseScrewHeadSeat, 2.3, 1.2, 1.1));
       }
     }
     if (d.detent) {
@@ -119,12 +118,10 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   }
   if (!reusable("base")) {
     for (const p of d.funnelMounts) {
-      base = base.fuse(cylinder(p.x, p.y, d.funnelMountZ, d.magnetPocketDiameter / 2 + 1, -d.funnelMountZ + 0.1))
-        .cut(cylinder(p.x, p.y, d.funnelMountZ - 0.1, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
-      // Leave a 4.6 mm access bore through the annular magnet seat for M2 heads.
-      if (settings.joint === "screws") base = base.cut(cylinder(p.x, p.y, d.funnelMountZ - 0.1, 2.3, -d.funnelMountZ + 0.2));
+      // Cut into the original flat base: never add material below Z=0.
+      base = base.cut(cylinder(p.x, p.y, -0.1, d.magnetPocketDiameter / 2, d.funnelBasePocketDepth + 0.1));
       if (settings.funnelAlignment === "pegs") {
-        base = base.cut(cylinder(p.x, p.y, d.funnelMountZ + d.magnetPocketDepth * 0.4, d.magnetPocketDiameter / 2 + 0.3, d.magnetPocketDepth * 0.6));
+        base = base.cut(cylinder(p.x, p.y, d.funnelBasePocketDepth * 0.4, d.magnetPocketDiameter / 2 + 0.3, d.funnelBasePocketDepth * 0.6));
       }
     }
   }
@@ -209,7 +206,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       if (settings.joint === "screws") {
         // Give an M2x5 tip more room than the former 0.1 mm, while keeping a
         // solid roof below the coaxial magnet or peg receptacle.
-        const pilotEnd = Math.min(d.joinZ + 4.4, d.top - d.magnetPocketDepth - 0.5);
+        const pilotEnd = Math.min(d.joinZ + 4.4 + d.funnelBasePocketDepth, d.top - d.magnetPocketDepth - 0.5);
         tray = tray.cut(cylinder(p.x, p.y, d.joinZ + 1.4, 0.85, pilotEnd - (d.joinZ + 1.4)));
       }
     }
@@ -305,16 +302,16 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       .cut(box(2.4, 2.4, -3.01, d.length - 4.8, d.width - 4.8, 3.2))
       .cut(box(d.funnelOutletX - outlet / 2, (d.width - outlet) / 2, bottom - 0.1, outlet, outlet, 0.2));
     for (const p of d.funnelMounts) {
-      // Solid corner lands surround the pockets; sockets accept the base corners.
+      // Solid corner lands receive only the protruding magnets, not base bosses.
       const land = p.y < d.width / 2 ? p.y : d.width - p.y;
       const span = land + d.magnetPocketDiameter / 2 + 1.2;
       funnel = funnel.fuse(box(p.x < d.length / 2 ? 0 : d.length - span, p.y < d.width / 2 ? 0 : d.width - span,
         z - d.magnetPocketDepth - 1.2, span, span, -z + d.magnetPocketDepth + 1.2))
-        .cut(cylinder(p.x, p.y, z, d.magnetPocketDiameter / 2 + 1.15, -z + 0.1));
+        .cut(cylinder(p.x, p.y, z, d.magnetPocketDiameter / 2, -z + 0.1));
       funnel = settings.funnelAlignment === "magnets"
         ? funnel.cut(cylinder(p.x, p.y, z - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1))
-        : funnel.fuse(cylinder(p.x, p.y, z - 0.1, (d.magnetPocketDiameter - 0.3) / 2, d.magnetPocketDepth - 0.2)
-          .fuse(cone(p.x, p.y, z + d.magnetPocketDepth * 0.45, d.magnetPocketDiameter / 2 + 0.2, (d.magnetPocketDiameter - 0.3) / 2, d.magnetPocketDepth * 0.25))
+        : funnel.fuse(cylinder(p.x, p.y, z - 0.1, (d.magnetPocketDiameter - 0.3) / 2, d.funnelBasePocketDepth - 0.2)
+          .fuse(cone(p.x, p.y, z + d.funnelBasePocketDepth * 0.45, d.magnetPocketDiameter / 2 + 0.2, (d.magnetPocketDiameter - 0.3) / 2, d.funnelBasePocketDepth * 0.25))
           .cut(box(p.x - 0.3, p.y - d.magnetPocketDiameter, z - 0.05, 0.6, d.magnetPocketDiameter * 2, d.magnetPocketDepth + 0.2)));
     }
   }
@@ -345,16 +342,22 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       }
     } else {
       // A shoulder catches the split peg after insertion; insertion flex is unmeasured.
-      if (intersectionVolume(base, funnel.clone().translate(0, 0, -d.magnetPocketDepth * 0.35)) < 0.001) throw new Error("Funnel snap pegs lack retaining shoulders");
+      if (intersectionVolume(base, funnel.clone().translate(0, 0, -d.funnelBasePocketDepth * 0.35)) < 0.001) throw new Error("Funnel snap pegs lack retaining shoulders");
     }
   }
   for (const part of [base, funnel]) {
     const [min, max] = part.boundingBox.bounds;
     if (min[0] < -1e-5 || min[1] < -1e-5 || max[0] > d.length + 1e-5 || max[1] > d.width + 1e-5) throw new Error("Funnel attachment protrudes beyond the base footprint");
   }
+  if (Math.abs(base.boundingBox.bounds[0][2]) > 1e-5) throw new Error("Base underside must stay on Z=0 without mounting protrusions");
   if (settings.joint === "screws") for (const p of d.joints) {
-    if (intersectionVolume(base, cylinder(p.x, p.y, d.funnelMountZ, 2.1, -d.funnelMountZ + 2.2)) >= 1e-5) throw new Error("Embedded mount blocks assembly screw insertion");
+    if (intersectionVolume(base, cylinder(p.x, p.y, 0, 2.1, d.baseScrewHeadSeat - 0.1)) >= 1e-5) throw new Error("Embedded mount blocks assembly screw insertion");
+    const head = cylinder(p.x, p.y, d.baseScrewHeadSeat - 2.2, 2.1, 2.2);
+    const shaft = cylinder(p.x, p.y, d.baseScrewHeadSeat, 0.8, 5);
+    if (intersectionVolume(base, head) >= 1e-5 || intersectionVolume(tray, shaft) >= 1e-5 ||
+        d.baseScrewHeadSeat - 2.2 < d.funnelBasePocketDepth + 0.09) throw new Error("Assembly screw overlaps the funnel attachment or its pilot");
   }
+  completed.push("Flat base underside and recessed screw heads clear funnel magnets or pegs");
   completed.push("Funnel mouth, continuous outlet, and attachment clearances verified");
   // The pitch-repeating geometry lets us sample the two boundaries and the
   // first interior station. This is a fast check, not a full per-station proof.
@@ -443,10 +446,10 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   }
   if (d.joints.some((joint, index) => joint.x !== d.magnets[index].x || joint.y !== d.magnets[index].y)) throw new Error("Corner fasteners are not aligned with the magnets");
   if (settings.joint === "screws") {
-    const screwTip = 2.3 + 5;
+    const screwTip = d.baseScrewHeadSeat + 5;
     if (d.top - d.magnetPocketDepth - screwTip < 0.5) throw new Error("Corner screw reaches the magnet pocket");
     const p = d.joints[0];
-    const pilotEnd = Math.min(d.joinZ + 4.4, d.top - d.magnetPocketDepth - 0.5);
+    const pilotEnd = Math.min(d.joinZ + 4.4 + d.funnelBasePocketDepth, d.top - d.magnetPocketDepth - 0.5);
     if (intersectionVolume(tray, cylinder(p.x, p.y, d.joinZ + 1.5, 0.3, pilotEnd - d.joinZ - 1.6)) >= 1e-5 ||
         intersectionVolume(tray, cylinder(p.x, p.y, pilotEnd + 0.1, 0.3, 0.2)) < 0.05) {
       throw new Error("Corner screw pilot must be blind below the magnet pocket");
@@ -546,8 +549,8 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   completed.push("Overlapping storage handles, closed-lid discharge plug, and 45-degree internal gusset verified");
   if (settings.joint === "screws") {
     const p = d.joints[0];
-    if (intersectionVolume(base, cylinder(p.x + 1.8, p.y, 2.45, 0.08, 0.15)) >= 1e-5 ||
-        intersectionVolume(base, cylinder(p.x + 1.8, p.y, 3.15, 0.08, 0.15)) < 0.001) {
+    if (intersectionVolume(base, cylinder(p.x + 1.8, p.y, d.baseScrewHeadSeat + 0.15, 0.08, 0.15)) >= 1e-5 ||
+        intersectionVolume(base, cylinder(p.x + 1.8, p.y, d.baseScrewHeadSeat + 0.85, 0.08, 0.15)) < 0.001) {
       throw new Error("Assembly screw counterbore lacks its 45-degree transition");
     }
     completed.push("Assembly screw counterbore retains its head seat and 45-degree roof");
