@@ -1,4 +1,4 @@
-import { assertValidSettings, funnelBasePocketDepth, RELEASE_WINDOW_DIAMETER_CLEARANCE, resolveScrewDimensions } from "./settings";
+import { assertValidSettings, baseMountDimensions, funnelBasePocketDepth, RELEASE_WINDOW_DIAMETER_CLEARANCE, resolveScrewDimensions } from "./settings";
 import type { DerivedDimensions, Settings, SettingsInput } from "./types";
 
 /** Browser CAD dimensions. Keep shape decisions here for future UI controls. */
@@ -21,7 +21,8 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
   const length = screwXs.at(-1)! + rim + drop / 2 + 1.5;
   const width = Math.max(2 * margin + (c.rows - 1) * pitch, 2 * rim + 12);
   const screwYs = Array.from({ length: c.rows }, (_, index) => width / 2 + pitch * (index - (c.rows - 1) / 2));
-  const floor = 1.6;
+  const mount = baseMountDimensions(c);
+  const floor = mount.floor;
   const sliderZ = floor + c.slideClearance;
   const sliderThickness = 2;
   const joinZ = sliderZ + sliderThickness + c.slideClearance;
@@ -38,11 +39,16 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
     shaft, head, slot, drop, window, pitch, rim, wall, sliderInsetY, releaseX,
     screwXs, screwYs, length, width, floor, sliderZ, sliderThickness, joinZ, deckThickness, deckTop, screwSpaceHeight: c.screwSpaceHeight, top,
     joints, magnets,
-    funnelDepth: 14,
+    funnelDepth: c.funnelHeight ?? c.screwLength + 14,
+    funnelSlopeZ: -(c.screwLength + 3),
+    registration: [length / 3, length * 2 / 3].flatMap((x) => [1.5, width - 1.5].map((y) => ({ x, y }))),
     // Only the magnet projects below the flat base; the funnel receives it.
     funnelMountZ: c.funnelAlignment === "magnets" ? funnelBasePocketDepth(c) - c.magnetThickness - c.magnetDepthClearance : 0,
     funnelBasePocketDepth: funnelBasePocketDepth(c),
-    baseScrewHeadSeat: 2.3 + funnelBasePocketDepth(c),
+    baseScrewHeadSeat: mount.headSeat,
+    baseMountTaperZ: mount.taperZ,
+    baseMountTaperTop: mount.taperTop,
+    funnelPegHeight: Math.max(0.2, Math.min(mount.taperZ - 0.2, funnelBasePocketDepth(c) - 0.2)),
     funnelMounts: joints.map(({ x, y }) => ({ x, y })),
     funnelOutletX: 2.4 + c.funnelOutlet / 2 + (length - 4.8 - c.funnelOutlet) * 0.2,
     magnetPocketDiameter: c.magnetDiameter + c.magnetDiameterClearance,

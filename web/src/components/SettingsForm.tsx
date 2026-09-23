@@ -12,7 +12,7 @@ export function SettingsForm({ fields, settings, onChange }: Props) {
     {fields.map((field) => {
       const value = settings[field.key]
       const id = `setting-${field.key}`
-      const presetValue = screwDimensions && field.key in screwDimensions ? screwDimensions[field.key as keyof typeof screwDimensions] : null
+      const presetValue = field.key === 'funnelHeight' ? settings.screwLength + 14 : screwDimensions && field.key in screwDimensions ? screwDimensions[field.key as keyof typeof screwDimensions] : null
       const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const next = field.kind === 'boolean' ? (event.target as HTMLInputElement).checked : event.target.value
         if (field.kind === 'number' && field.optional) setClearedField(next === '' ? id : null)

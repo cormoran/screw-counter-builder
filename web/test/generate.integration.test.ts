@@ -15,9 +15,10 @@ describe("browser CAD integration", () => {
     expect(model.diagnostics.lid.bounds.max[0]).toBeCloseTo(model.dimensions.rim + 0.5);
     expect(model.diagnostics.base.bounds.min[2]).toBeCloseTo(0);
     expect(model.verification.completed).toContain("Flat base underside and recessed screw heads clear funnel magnets or pegs");
+    expect(model.verification.completed).toContain("Base mounts have a single common chamber and continuous 45-degree roofs without shelves");
     expect(model.verification.completed).toContain("Rounded funnel corners, outer edges, and outlet verified");
-    expect(model.diagnostics.funnel.bounds.min[2]).toBeCloseTo(-14);
-    expect(model.diagnostics.funnel.bounds.max[2]).toBeCloseTo(attachment === "pegs" ? model.dimensions.funnelBasePocketDepth - 0.3 : 0);
+    expect(model.diagnostics.funnel.bounds.min[2]).toBeCloseTo(-19);
+    expect(model.diagnostics.funnel.bounds.max[2]).toBeCloseTo(attachment === "pegs" ? Math.max(0.8, model.dimensions.funnelPegHeight) : 0.8);
     expect(model.diagnostics.funnel.bounds.min[0]).toBeCloseTo(0);
     expect(model.diagnostics.funnel.bounds.max[0]).toBeCloseTo(model.dimensions.length);
     expect(model.verification.completed).toContain("Funnel mouth, continuous outlet, and attachment clearances verified");
@@ -30,9 +31,10 @@ describe("browser CAD integration", () => {
     { funnelAlignment: "pegs", magnetThickness: 1 },
     { funnelAlignment: "pegs", magnetThickness: 3 },
   ] as const)("keeps the base flat and screw access clear with minimum-diameter mounts: %j", async (attachment) => {
-    const model = await generateModel({ rows: 1, columns: 1, magnetDiameter: 5, magnetDiameterClearance: 0, funnelOutlet: 5, ...attachment });
+    const model = await generateModel({ rows: 1, columns: 1, slideClearance: 0.15, magnetDiameter: 5, magnetDiameterClearance: 0, funnelOutlet: 5, ...attachment });
     expect(model.diagnostics.base.bounds.min[2]).toBeCloseTo(0);
     expect(model.verification.completed).toContain("Flat base underside and recessed screw heads clear funnel magnets or pegs");
+    expect(model.verification.completed).toContain("Base mounts have a single common chamber and continuous 45-degree roofs without shelves");
     expect(model.verification.completed).toContain("Rounded funnel corners, outer edges, and outlet verified");
     expect(model.verification.completed).toContain("Funnel mouth, continuous outlet, and attachment clearances verified");
     expect(model.verification.completed).toContain("5 valid single solids");
@@ -43,7 +45,7 @@ describe("browser CAD integration", () => {
     { magnetDiameter: 8, magnetThickness: 3, magnetDepthClearance: 0.3, funnelOutlet: 24 },
   ])("keeps small and large funnel mounts clear: %j", async (dimensions) => {
     const model = await generateModel({ rows: 1, columns: 1, joint: "glue", lidStyle: "cutout", lidAlignment: "pegs", funnelAlignment: "pegs", ...dimensions });
-    expect(model.verification.completed).toContain("No pairwise assembly interference at the closed position");
+    expect(model.verification.completed).toContain("No rigid assembly interference outside the split-peg compression regions");
   }, 120_000);
 
   it("changes the printed slider when the detent spring is shortened", async () => {
@@ -86,9 +88,8 @@ describe("browser CAD integration", () => {
     expect(model.verification.completed).toContain("Discharge cutout full-height chamfers and matching lid lips verified");
     expect(model.verification.completed).toContain("Coaxial corner fasteners and magnet pockets remain vertically separated");
     expect(model.dimensions.joints).toEqual(model.dimensions.magnets);
-    expect(model.verification.completed).toContain("Assembly screw counterbore retains its head seat and 45-degree roof");
     expect(model.verification.completed).toContain("Square tray holes, entry flares, solid deck, and unchanged square base outlets verified");
-    expect(model.verification.completed).toContain("Tapered registration lands and sockets retain 45-degree printable faces");
+    expect(model.verification.completed).toContain("Small side registration lands and sockets verified at both mating planes");
     expect(model.dimensions.screwSpaceHeight).toBe(15);
     expect(model.dimensions.deckThickness).toBe(0.75);
     expect(model.dimensions.drop).toBe(3.5);

@@ -9,7 +9,20 @@ vi.mock("replicad-opencascadejs/wasm?url", () => ({
 }));
 
 describe("incremental preview geometry", () => {
-  it("invalidates only the tray when automatic length selection crosses 5 mm", async () => {
+  it("invalidates the funnel when height or the slope start changes", async () => {
+    const settings = { rows: 1, columns: 1, trayStyle: "cutout" as const, funnelHeight: 40 };
+    const short = await generatePreviewModel({ ...settings, screwLength: 5 });
+    const long = await generatePreviewModel({ ...settings, screwLength: 20 });
+    const tall = await generatePreviewModel({ ...settings, screwLength: 20, funnelHeight: 50 });
+    expect(short.partMeshes.funnel).not.toBe(long.partMeshes.funnel);
+    expect(long.partMeshes.funnel).not.toBe(tall.partMeshes.funnel);
+    for (const part of ["base", "tray", "slider", "lid"] as const) {
+      expect(short.partMeshes[part]).toBe(long.partMeshes[part]);
+      expect(long.partMeshes[part]).toBe(tall.partMeshes[part]);
+    }
+  }, 120_000);
+
+  it("invalidates tray and funnel when automatic length selection crosses 5 mm", async () => {
     const streamed: PartPreview[] = [];
     const events: string[] = [];
     const holes = await generatePreviewModel({ rows: 1, columns: 1, screwLength: 5 }, {
@@ -24,7 +37,8 @@ describe("incremental preview geometry", () => {
     }
     const cutout = await generatePreviewModel({ rows: 1, columns: 1, screwLength: 5.1 });
     expect(holes.partMeshes.tray).not.toBe(cutout.partMeshes.tray);
-    for (const part of ["base", "slider", "lid", "funnel"] as const) expect(holes.partMeshes[part]).toBe(cutout.partMeshes[part]);
+    for (const part of ["base", "slider", "lid"] as const) expect(holes.partMeshes[part]).toBe(cutout.partMeshes[part]);
+    expect(holes.partMeshes.funnel).not.toBe(cutout.partMeshes.funnel);
     const stillCutout = await generatePreviewModel({ rows: 1, columns: 1, screwLength: 8 });
     expect(stillCutout.partMeshes.tray).toBe(cutout.partMeshes.tray);
   }, 120_000);
@@ -46,10 +60,9 @@ describe("incremental preview geometry", () => {
     }
 
     const joint = await generatePreviewModel({ rows: 2, columns: 2, detentSpringLength: 12, magnetThickness: 2.5, joint: "glue" });
-    for (const part of ["slider", "lid"] as const) {
-      expect(joint.partMeshes[part]).toBe(magnet.partMeshes[part]);
-    }
-    for (const part of ["base", "tray"] as const) {
+    // Removing the head chamber lowers the base and the whole moving stack.
+    expect(joint.dimensions.floor).toBeLessThan(magnet.dimensions.floor);
+    for (const part of ["base", "tray", "slider", "lid"] as const) {
       expect(joint.partMeshes[part]).not.toBe(magnet.partMeshes[part]);
     }
 

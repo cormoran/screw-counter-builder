@@ -12,6 +12,19 @@ describe("browser CAD dimensions", () => {
     expect(validateSettings({ trayStyle: "unknown" as "auto" })).not.toEqual([]);
   });
 
+  it("keeps screw-length drop clearance and validates manual funnel heights", () => {
+    for (const screwLength of [1, 5, 20, 100]) {
+      const automatic = deriveDimensions({ screwLength });
+      expect(automatic.funnelSlopeZ).toBe(-screwLength - 3);
+      expect(automatic.funnelDepth + automatic.funnelSlopeZ).toBe(11);
+      expect(validateSettings({ screwLength, funnelHeight: screwLength + 8 })).toEqual([]);
+      expect(validateSettings({ screwLength, funnelHeight: screwLength + 7.9 })).not.toEqual([]);
+    }
+    for (const funnelHeight of [NaN, Infinity, 161]) expect(validateSettings({ funnelHeight })).not.toEqual([]);
+    expect(validateSettings({ funnelAlignment: "screws" })).toEqual([]);
+    expect(validateSettings({ funnelAlignment: "screws", joint: "glue" })).not.toEqual([]);
+  });
+
   it("defaults the outlet to 10 mm and accepts 5 mm while retaining head clearance", () => {
     expect(DEFAULT_SETTINGS.funnelOutlet).toBe(10);
     for (const funnelOutlet of [5, 10, 24]) expect(validateSettings({ funnelOutlet })).toEqual([]);
@@ -33,10 +46,11 @@ describe("browser CAD dimensions", () => {
   it("keeps the funnel low, fixes it at screw corners, and offsets the outlet away from the tab", () => {
     for (const columns of [1, 10, 24]) {
       const d = deriveDimensions({ columns });
-      expect(d.funnelDepth).toBe(14);
+      expect(d.funnelDepth).toBe(19);
+      expect(d.funnelSlopeZ).toBe(-8);
       expect(d.funnelMounts).toEqual(d.joints);
-      expect(d.funnelMountZ).toBeCloseTo(-0.65);
-      expect(d.baseScrewHeadSeat).toBeCloseTo(3.8);
+      expect(d.funnelMountZ).toBeCloseTo(-1.25);
+      expect(d.baseScrewHeadSeat).toBeCloseTo(3.2);
       expect(d.funnelOutletX).toBeLessThan(d.length / 2);
       expect(d.funnelOutletX - DEFAULT_SETTINGS.funnelOutlet / 2).toBeGreaterThan(2.4);
     }
@@ -45,11 +59,23 @@ describe("browser CAD dimensions", () => {
     expect(validateSettings({ magnetDiameter: 3, joint: "glue" })).toEqual([]);
   });
 
+  it("fits a complete support-free common-chamber roof below the mating plane", () => {
+    for (const magnetDiameter of [5, 6, 8]) for (const slideClearance of [0.15, 0.2, 0.6]) for (const funnelAlignment of ["magnets", "pegs"] as const) {
+      const d = deriveDimensions({ magnetDiameter, slideClearance, funnelAlignment });
+      expect(d.baseMountTaperTop - d.baseMountTaperZ).toBeCloseTo(d.magnetPocketDiameter / 2 - 1.2);
+      expect(d.joinZ - d.baseMountTaperTop).toBeGreaterThanOrEqual(0.5 - 1e-8);
+      expect(d.baseMountTaperZ + d.magnetPocketDiameter / 2 - 2.1).toBeCloseTo(d.baseScrewHeadSeat);
+      expect(d.funnelPegHeight).toBeLessThan(d.baseMountTaperZ);
+    }
+    expect(deriveDimensions().joinZ).toBeCloseTo(4.6);
+    expect(deriveDimensions({ funnelAlignment: "screws" }).joinZ).toBeCloseTo(4);
+  });
+
   it("derives the print-feedback M2 4x2 dimensions", () => {
     const d = deriveDimensions({ rows: 4, columns: 2, screw: "M2" });
     expect(d.length).toBeCloseTo(43.25);
     expect(d.width).toBeCloseTo(53);
-    expect(d.top).toBeCloseTo(20.95);
+    expect(d.top).toBeCloseTo(21.55);
     expect(d.pitch).toBe(8);
     expect(d.head).toBeCloseTo(3.2);
     expect(d.drop).toBeCloseTo(3.5);
