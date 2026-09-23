@@ -1,7 +1,8 @@
 import { assertValidSettings } from './settings'
-import type { GenerateOptions, GeneratedModel, GenerationProgress, SettingsInput } from './types'
+import type { PartPreview, GenerateOptions, GeneratedModel, GenerationProgress, SettingsInput } from './types'
 
 type WorkerReply =
+  | { type: 'part'; id: number; preview: PartPreview }
   | { type: 'progress'; id: number; progress: GenerationProgress }
   | { type: 'complete'; id: number; model: GeneratedModel }
   | { type: 'error'; id: number; message: string }
@@ -13,6 +14,7 @@ type PendingRequest = {
   abort: () => void
   resolve: (model: GeneratedModel) => void
   reject: (reason: unknown) => void
+  onPart?: GenerateOptions['onPart']
   onProgress?: (progress: GenerationProgress) => void
   signal?: AbortSignal
 }
@@ -98,7 +100,9 @@ function getModelWorker() {
     const pending = pendingRequests.get(reply.id)
     if (!pending || pending.worker !== worker) return
 
-    if (reply.type === 'progress') {
+    if (reply.type === 'part') {
+      pending.onPart?.(reply.preview)
+    } else if (reply.type === 'progress') {
       pending.onProgress?.(reply.progress)
     } else if (reply.type === 'complete') {
       removePendingRequest(reply.id)
@@ -122,7 +126,7 @@ export function generateModel(input: SettingsInput = {}, options: GenerateOption
       removePendingRequest(id)
       reject(abortError())
     }
-    pendingRequests.set(id, { request: { type: 'generate', id, settings }, retries: 0, abort, onProgress: options.onProgress, reject, resolve, signal: options.signal })
+    pendingRequests.set(id, { request: { type: 'generate', id, settings }, retries: 0, abort, onPart: options.onPart, onProgress: options.onProgress, reject, resolve, signal: options.signal })
     options.signal?.addEventListener('abort', abort, { once: true })
     sendRequest(id)
   })

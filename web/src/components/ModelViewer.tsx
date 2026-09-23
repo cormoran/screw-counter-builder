@@ -53,8 +53,8 @@ type ViewerRuntime = {
 
 const PARTS: readonly { id: ModelPart; label: ModelPart; color: number; offset: [number, number, number] }[] = [
   { id: 'base', label: 'base', color: 0x64748b, offset: [-8, -7, -4] },
-  { id: 'tray', label: 'tray', color: 0x0f766e, offset: [8, 7, 5] },
   { id: 'slider', label: 'slider', color: 0xd97706, offset: [0, -11, 1] },
+  { id: 'tray', label: 'tray', color: 0x0f766e, offset: [8, 7, 5] },
   { id: 'funnel', label: 'funnel', color: 0x9333ea, offset: [0, 0, -23] },
   { id: 'lid', label: 'lid', color: 0x3b82f6, offset: [0, 0, 19] },
 ]
@@ -64,6 +64,8 @@ export function ModelViewer({ language, meshes, dimensions = null, mode, cameraS
   const [separation, setSeparation] = useState(100)
   const [visibleParts, setVisibleParts] = useState<Partial<Record<ModelPart, boolean>>>({})
   const [webglUnavailable, setWebglUnavailable] = useState(false)
+  const dimensionsRef = useRef(dimensions)
+  dimensionsRef.current = dimensions
   const modeRef = useRef(mode)
   const separationRef = useRef(separation)
   const visiblePartsRef = useRef(visibleParts)
@@ -177,6 +179,12 @@ export function ModelViewer({ language, meshes, dimensions = null, mode, cameraS
         if (!object.geometry.boundingBox) object.geometry.computeBoundingBox()
         bounds.union(object.geometry.boundingBox!)
       })
+      // Frame the whole assembly from the first streamed part, so later parts
+      // do not repeatedly recenter or zoom the view while the user inspects it.
+      const assembly = dimensionsRef.current
+      if (!nextPlateSize && assembly) {
+        bounds.set(new THREE.Vector3(0, 0, -assembly.funnelDepth), new THREE.Vector3(assembly.length + 19, assembly.width, assembly.top + 3.4))
+      }
       const center = bounds.isEmpty() ? new THREE.Vector3() : bounds.getCenter(new THREE.Vector3())
       group.position.copy(center).multiplyScalar(-1)
       const size = bounds.isEmpty() ? 80 : bounds.getSize(new THREE.Vector3()).length() || 80

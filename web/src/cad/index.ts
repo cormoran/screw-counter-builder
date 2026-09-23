@@ -9,6 +9,8 @@ export type {
   GeneratedFileName,
   GeneratedModel,
   PreviewModel,
+  PartPreview,
+  ProgressivePreview,
   GenerationProgress,
   JointType,
   ModelPart,

@@ -105,4 +105,27 @@ describe('preview worker client', () => {
     for (const part of ['base', 'tray', 'lid', 'funnel'] as const) expect(updated.partMeshes[part]).toBe(initial.partMeshes[part])
   })
 
+
+  it('combines streamed meshes with cached parts without a duplicate final transfer', async () => {
+    const { generatePreviewModel } = await import('./preview-client')
+    const initialMeshes = Object.fromEntries(parts.map((part, index) => [part, mesh(index)])) as Record<ModelPart, TriangleMesh>
+    const first = generatePreviewModel()
+    const worker = PreviewWorker.instances[0]
+    worker.reply({ type: 'complete', id: worker.postMessage.mock.calls[0][0].id, model: { dimensions: {} }, partMeshes: initialMeshes, partKeys: keys() })
+    await first
+    const onPart = vi.fn()
+    const next = generatePreviewModel({ detentSpringLength: 12 }, { onPart })
+    const id = worker.postMessage.mock.calls[1][0].id
+    const replacement = mesh(99)
+    for (const part of ['base', 'slider', 'tray', 'funnel', 'lid'] as const) {
+      worker.onmessage?.({ data: { type: 'part', id, preview: { part, dimensions: {}, mesh: part === 'slider' ? replacement : undefined } } } as MessageEvent)
+    }
+    expect(onPart.mock.calls.map(([part]) => part.part)).toEqual(['base', 'slider', 'tray', 'funnel', 'lid'])
+    expect(onPart.mock.calls[0][0].mesh).toBe(initialMeshes.base)
+    worker.reply({ type: 'complete', id, model: { dimensions: {} }, partMeshes: {}, partKeys: keys('slider-2') })
+    const result = await next
+    expect(result.partMeshes.slider).toBe(replacement)
+    for (const part of ['base', 'tray', 'funnel', 'lid'] as const) expect(result.partMeshes[part]).toBe(initialMeshes[part])
+  })
+
 })

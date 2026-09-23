@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import type { PartPreview } from "../src/cad/types";
 import { generatePreviewModel } from "../src/cad/generate";
 
 vi.mock("replicad-opencascadejs/wasm?url", () => ({
@@ -9,7 +10,18 @@ vi.mock("replicad-opencascadejs/wasm?url", () => ({
 
 describe("incremental preview geometry", () => {
   it("invalidates only the tray when automatic length selection crosses 5 mm", async () => {
-    const holes = await generatePreviewModel({ rows: 1, columns: 1, screwLength: 5 });
+    const streamed: PartPreview[] = [];
+    const events: string[] = [];
+    const holes = await generatePreviewModel({ rows: 1, columns: 1, screwLength: 5 }, {
+      onPart: (part) => { streamed.push(part); events.push(part.part); },
+      onProgress: (progress) => { if (progress.message?.startsWith("Built ")) events.push(progress.message); },
+    });
+    expect(events).toEqual(["base", "Built base", "slider", "Built slider", "tray", "Built tray", "funnel", "Built funnel", "lid", "Built lid"]);
+    for (const part of streamed) {
+      expect(part.mesh).toBe(holes.partMeshes[part.part]);
+      expect(part.mesh.indices.length).toBeGreaterThan(0);
+      expect(part.dimensions).toBe(holes.dimensions);
+    }
     const cutout = await generatePreviewModel({ rows: 1, columns: 1, screwLength: 5.1 });
     expect(holes.partMeshes.tray).not.toBe(cutout.partMeshes.tray);
     for (const part of ["base", "slider", "lid", "funnel"] as const) expect(holes.partMeshes[part]).toBe(cutout.partMeshes[part]);

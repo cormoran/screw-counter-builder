@@ -67,3 +67,5 @@ Under Advanced settings → Storage & operation, choose Full cover or Cutout cov
 Set the target **Screw length** (default 5 mm) and **Tray style** in the basic settings. Auto chooses square holes for lengths up to and including 5 mm, and an open cutout for longer screws. You can force either style regardless of length. The square-hole tray restores the individual openings with a 0.3 mm entry flare (3.5 mm straight opening with default M2 dimensions). Both styles keep the current square holes in the base. Storage height remains a separate setting.
 
 Length and style are included in settings files and restored across reloads. Older files without these fields use 5 mm and Auto. The preview and exports use the resolved style; changing style changes only the tray geometry.
+
+The live preview and model generation display each finished part in this order: base → slider → tray → funnel → lid. You can inspect the available parts while the remainder is building. The camera keeps the same assembly framing as parts arrive; downloadable files become ready after the complete model passes export validation.

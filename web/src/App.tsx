@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import JSZip from 'jszip'
-import { DEFAULT_PREVIEW_CONFIRM_BYTES, DEFAULT_SETTINGS, deriveDimensions, generateModel, generatePreviewModel, getDefaultPreviewInfo, loadDefaultPreview, validateSettings, type GeneratedModel, type ModelPart, type PreviewModel, type Settings, type TriangleMesh } from './cad'
+import { DEFAULT_PREVIEW_CONFIRM_BYTES, DEFAULT_SETTINGS, deriveDimensions, generateModel, generatePreviewModel, getDefaultPreviewInfo, loadDefaultPreview, validateSettings, type GeneratedModel, type ModelPart, type ProgressivePreview, type Settings, type TriangleMesh } from './cad'
 import { createBambu3mf, type Print3mfArtifact } from './print3mf'
 import { DimensionPreview } from './components/DimensionPreview'
 import type { ViewMode, ViewerCameraState } from './components/ModelViewer'
@@ -29,7 +29,7 @@ export default function App() {
   const [state, setState] = useState<State>('ready')
   const [status, setStatus] = useState(() => text(language, 'initialStatus'))
   const [model, setModel] = useState<GeneratedModel | null>(null)
-  const [preview, setPreview] = useState<PreviewModel | null>(null)
+  const [preview, setPreview] = useState<ProgressivePreview | null>(null)
   const [previewState, setPreviewState] = useState<PreviewState>('idle')
   const [previewStatus, setPreviewStatus] = useState(() => text(language, 'loadingDefaultPreview'))
   const [realtimePreview, setRealtimePreview] = useState(loadRealtimePreview)
@@ -188,7 +188,13 @@ export default function App() {
         setPendingTransfer({ label: text(language, 'downloadCadEngine'), detail: text(language, 'cadEngineDetail'), action: () => { wasmApproved.current = true; setPreviewRetry((value) => value + 1) } })
         return
       }
+      const readyMeshes: Partial<Record<ModelPart, TriangleMesh>> = {}
       void generatePreviewModel(settings, {
+        onPart: ({ part, mesh, dimensions }) => {
+          if (controller.signal.aborted || previewGeneration.current !== controller) return
+          readyMeshes[part] = mesh
+          setPreview({ dimensions, partMeshes: { ...readyMeshes } })
+        },
         signal: controller.signal,
         onProgress: (progress) => setPreviewStatus(localizeProgress(language, progress.message) ?? text(language, 'generatingPreview')),
       }).then((generated) => {
@@ -246,7 +252,13 @@ export default function App() {
     setState('generating')
     setStatus(text(language, 'preparingCad'))
     try {
+      const readyMeshes: Partial<Record<ModelPart, TriangleMesh>> = {}
       const generated = await generateModel(settings, {
+        onPart: ({ part, mesh, dimensions }) => {
+          if (controller.signal.aborted || generation.current !== controller) return
+          readyMeshes[part] = mesh
+          setPreview({ dimensions, partMeshes: { ...readyMeshes } })
+        },
         signal: controller.signal,
         onProgress: (progress) => setStatus(localizeProgress(language, progress.message) ?? phaseLabel(language, progress.phase)),
       })

@@ -155,7 +155,12 @@ export interface PreviewModel {
   partMeshes: Record<ModelPart, TriangleMesh>;
 }
 
+export type PartPreview = { part: ModelPart; mesh: TriangleMesh; dimensions: DerivedDimensions };
+export type ProgressivePreview = { dimensions: DerivedDimensions; partMeshes: Partial<Record<ModelPart, TriangleMesh>> };
+
 export interface GenerateOptions {
+  /** Emitted as each part is meshed, before the whole model is ready. */
+  onPart?: (preview: PartPreview) => void;
   onProgress?: (progress: GenerationProgress) => void;
   signal?: AbortSignal;
 }

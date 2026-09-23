@@ -3,7 +3,7 @@ import openCascadeWasm from "replicad-opencascadejs/wasm?url";
 import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, Sketcher, sketchCircle, sketchRectangle, sketchRoundedRectangle, topMost } from "replicad";
 import { TRAY_ENTRY_FLARE } from "./settings";
 import type { Shape3D } from "replicad";
-import type { DerivedDimensions, GenerateOptions, GeneratedFileName, PartDiagnostic, Settings, TriangleMesh, VerificationResult } from "./types";
+import type { DerivedDimensions, GenerateOptions, GeneratedFileName, PartDiagnostic, ModelPart, Settings, TriangleMesh, VerificationResult } from "./types";
 
 export type BuildConfiguration = {
   /** Skip STL/STEP serialization for the low-latency editor preview. */
@@ -70,6 +70,22 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   aborted();
   const keys = partKeys(settings, d);
   const reusable = <P extends keyof typeof keys>(part: P) => partCache[part]?.key === keys[part] ? partCache[part] : undefined;
+  const meshTolerance = configuration.meshTolerance ?? 0.08;
+  const preparedMeshes: Partial<Record<ModelPart, TriangleMesh>> = {};
+  const prepareMesh = (name: ModelPart, shape: Shape3D): TriangleMesh => {
+    if (preparedMeshes[name]) return preparedMeshes[name];
+    const prior = reusable(name);
+    if (prior?.meshTolerance === meshTolerance) return preparedMeshes[name] = prior.mesh;
+    const mesh = shape.mesh({ tolerance: meshTolerance, angularTolerance: 0.2 });
+    return preparedMeshes[name] = {
+      positions: Float32Array.from(mesh.vertices), normals: Float32Array.from(mesh.normals), indices: Uint32Array.from(mesh.triangles),
+    };
+  };
+  const partReady = (part: ModelPart, shape: Shape3D, completed: number) => {
+    aborted();
+    if (options.onPart) options.onPart({ part, mesh: prepareMesh(part, shape), dimensions: d });
+    options.onProgress?.({ phase: "building", completed, total: 5, message: `Built ${part}` });
+  };
   // The low-Y rail is opposite the high-Y click spring. Its open-top groove
   // takes a rigid guide rib that runs from near the slider nose to the stop.
   // Place the slider from above before fastening the tray to the base.
@@ -126,7 +142,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       }
     }
   }
-  options.onProgress?.({ phase: "building", completed: 1, total: 5, message: "Built base" });
+  partReady("base", base, 1);
   let tray = reusable("tray")?.shape;
   const frameWall = 2.4;
   const sliderGuideWidth = 2;
@@ -159,6 +175,28 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const handleRibBaseZ = d.deckTop + handleExtraThickness;
   const handleRibY = storageHandleY + 1;
   const handleRibWidth = storageHandleWidth - 2;
+  const sw = d.width - 2 * d.sliderInsetY;
+  let slider = reusable("slider")?.shape;
+  if (!slider) {
+    // Keep the handle's outward-facing root corners rounded. Square the body
+    // end instead, so its inward-facing junction corners do not form a fillet.
+    slider = sliderBodyWithSquareHandleEnd(8, d.sliderInsetY, d.sliderZ, d.length - 8, sw, d.sliderThickness)
+      .fuse(rounded(d.length, storageHandleY, d.sliderZ, storageHandleLength, storageHandleWidth, d.sliderThickness, 3));
+    slider = slider.cut(rounded(storageHandleOpeningX, storageHandleOpeningY, d.sliderZ - 0.1, storageHandleOpeningLength, storageHandleOpeningWidth, d.sliderThickness + 0.2, 2));
+    // This solid rib cannot flex. It supports the low edge over a longer run
+    // and ends 0.3 mm before the base's closed groove end at full release.
+    slider = slider.fuse(box(
+      sliderStop.ribStartX, sliderStop.ribY, d.sliderZ,
+      sliderStop.ribEndX - sliderStop.ribStartX, sliderStop.ribWidth, d.sliderThickness,
+    ));
+    const last = d.screwXs.at(-1)!;
+    for (const y of d.screwYs) slider = slider.cut(rounded(d.releaseX - 1, y - d.slot / 2, d.sliderZ - 0.1, last + 3 - (d.releaseX - 1), d.slot, d.sliderThickness + 0.2, d.slot / 2 - 0.02)).cut(rounded(d.releaseX - d.window / 2, y - d.window / 2, d.sliderZ - 0.1, d.window, d.window, d.sliderThickness + 0.2, 0.65));
+    if (d.detent) {
+      const edge = d.width - d.sliderInsetY;
+      slider = slider.cut(rounded(10, edge - d.detent.springWidth - d.detent.reliefGap, d.sliderZ - 0.1, d.detent.springLength + 2, d.detent.reliefGap, d.sliderThickness + 0.2, 0.45)).cut(box(10, edge - d.detent.springWidth - d.detent.reliefGap + 0.4, d.sliderZ - 0.1, 0.8, d.detent.springWidth + d.detent.reliefGap + 2, d.sliderThickness + 0.2)).fuse(cylinder(d.detent.tipX, d.detent.tipY, d.sliderZ, d.detent.noseRadius, d.sliderThickness));
+    }
+  }
+  partReady("slider", slider, 2);
   if (!tray) {
     tray = rounded(0, 0, d.joinZ, d.length, d.width, d.deckThickness, 4);
     // Open only the screw-head area between two narrow ledges that keep the
@@ -233,29 +271,42 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     }
     for (const p of d.magnets) tray = tray.cut(cylinder(p.x, p.y, d.top - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
   }
-  options.onProgress?.({ phase: "building", completed: 2, total: 5, message: "Built tray" });
-  const sw = d.width - 2 * d.sliderInsetY;
-  let slider = reusable("slider")?.shape;
-  if (!slider) {
-    // Keep the handle's outward-facing root corners rounded. Square the body
-    // end instead, so its inward-facing junction corners do not form a fillet.
-    slider = sliderBodyWithSquareHandleEnd(8, d.sliderInsetY, d.sliderZ, d.length - 8, sw, d.sliderThickness)
-      .fuse(rounded(d.length, storageHandleY, d.sliderZ, storageHandleLength, storageHandleWidth, d.sliderThickness, 3));
-    slider = slider.cut(rounded(storageHandleOpeningX, storageHandleOpeningY, d.sliderZ - 0.1, storageHandleOpeningLength, storageHandleOpeningWidth, d.sliderThickness + 0.2, 2));
-    // This solid rib cannot flex. It supports the low edge over a longer run
-    // and ends 0.3 mm before the base's closed groove end at full release.
-    slider = slider.fuse(box(
-      sliderStop.ribStartX, sliderStop.ribY, d.sliderZ,
-      sliderStop.ribEndX - sliderStop.ribStartX, sliderStop.ribWidth, d.sliderThickness,
-    ));
-    const last = d.screwXs.at(-1)!;
-    for (const y of d.screwYs) slider = slider.cut(rounded(d.releaseX - 1, y - d.slot / 2, d.sliderZ - 0.1, last + 3 - (d.releaseX - 1), d.slot, d.sliderThickness + 0.2, d.slot / 2 - 0.02)).cut(rounded(d.releaseX - d.window / 2, y - d.window / 2, d.sliderZ - 0.1, d.window, d.window, d.sliderThickness + 0.2, 0.65));
-    if (d.detent) {
-      const edge = d.width - d.sliderInsetY;
-      slider = slider.cut(rounded(10, edge - d.detent.springWidth - d.detent.reliefGap, d.sliderZ - 0.1, d.detent.springLength + 2, d.detent.reliefGap, d.sliderThickness + 0.2, 0.45)).cut(box(10, edge - d.detent.springWidth - d.detent.reliefGap + 0.4, d.sliderZ - 0.1, 0.8, d.detent.springWidth + d.detent.reliefGap + 2, d.sliderThickness + 0.2)).fuse(cylinder(d.detent.tipX, d.detent.tipY, d.sliderZ, d.detent.noseRadius, d.sliderThickness));
+  partReady("tray", tray, 3);
+  aborted();
+  let funnel = reusable("funnel")?.shape;
+  if (!funnel) {
+    const z = d.funnelMountZ;
+    const bottom = -d.funnelDepth;
+    const outlet = settings.funnelOutlet;
+    const section = (w: number, h: number, height: number, x: number) => sketchRoundedRectangle(w, h, 2, { plane: "XY", origin: [x, d.width / 2, height] });
+    // A low rectangular block with a sloped cavity and an outlet away from +X's tab.
+    const envelope = rounded(0, 0, bottom, d.length, d.width, d.funnelDepth, 4)
+      .fillet(0.6, (finder) => finder.parallelTo("XY"));
+    funnel = envelope.clone()
+      .cut(section(outlet, outlet, bottom, d.funnelOutletX).loftWith(section(d.length - 4.8, d.width - 4.8, -3, d.length / 2), {}))
+      .cut(rounded(2.4, 2.4, -3.01, d.length - 4.8, d.width - 4.8, 3.2, 2))
+      .cut(rounded(d.funnelOutletX - outlet / 2, (d.width - outlet) / 2, bottom - 0.1, outlet, outlet, 0.2, 2))
+      .fillet(0.4, (finder) => finder.inPlane("XY", bottom).inBox(
+        [d.funnelOutletX - outlet / 2 - 1, (d.width - outlet) / 2 - 1, bottom - 0.01],
+        [d.funnelOutletX + outlet / 2 + 1, (d.width + outlet) / 2 + 1, bottom + 0.01]))
+      .fillet(0.4, (finder) => finder.inPlane("XY", 0).inBox([2.3, 2.3, -0.01], [d.length - 2.3, d.width - 2.3, 0.01]));
+    for (const p of d.funnelMounts) {
+      // Solid corner lands receive only the protruding magnets, not base bosses.
+      const land = p.y < d.width / 2 ? p.y : d.width - p.y;
+      const span = land + d.magnetPocketDiameter / 2 + 1.2;
+      const cornerLand = rounded(p.x < d.length / 2 ? 0 : d.length - span, p.y < d.width / 2 ? 0 : d.width - span,
+        z - d.magnetPocketDepth - 1.2, span, span, -z + d.magnetPocketDepth + 1.2, 2)
+        .fillet(0.6, (finder) => finder.parallelTo("XY"));
+      funnel = funnel.fuse(cornerLand.intersect(envelope.clone()))
+        .cut(cylinder(p.x, p.y, z, d.magnetPocketDiameter / 2, -z + 0.1));
+      funnel = settings.funnelAlignment === "magnets"
+        ? funnel.cut(cylinder(p.x, p.y, z - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1))
+        : funnel.fuse(cylinder(p.x, p.y, z - 0.1, (d.magnetPocketDiameter - 0.3) / 2, d.funnelBasePocketDepth - 0.2)
+          .fuse(cone(p.x, p.y, z + d.funnelBasePocketDepth * 0.45, d.magnetPocketDiameter / 2 + 0.2, (d.magnetPocketDiameter - 0.3) / 2, d.funnelBasePocketDepth * 0.25))
+          .cut(box(p.x - 0.3, p.y - d.magnetPocketDiameter, z - 0.05, 0.6, d.magnetPocketDiameter * 2, d.magnetPocketDepth + 0.2)));
     }
   }
-  options.onProgress?.({ phase: "building", completed: 3, total: 5, message: "Built slider" });
+  partReady("funnel", funnel, 4);
   const gussetRun = 4.2;
   const gussetPlugX = frameWall - 0.3;
   // The tray keeps the existing corner receptacles in both modes. Pegs use
@@ -309,42 +360,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
         : lid.cut(cylinder(p.x, p.y, d.top - 0.1, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
     }
   }
-  options.onProgress?.({ phase: "building", completed: 4, total: 5, message: "Built lid" });
-  aborted();
-  let funnel = reusable("funnel")?.shape;
-  if (!funnel) {
-    const z = d.funnelMountZ;
-    const bottom = -d.funnelDepth;
-    const outlet = settings.funnelOutlet;
-    const section = (w: number, h: number, height: number, x: number) => sketchRoundedRectangle(w, h, 2, { plane: "XY", origin: [x, d.width / 2, height] });
-    // A low rectangular block with a sloped cavity and an outlet away from +X's tab.
-    const envelope = rounded(0, 0, bottom, d.length, d.width, d.funnelDepth, 4)
-      .fillet(0.6, (finder) => finder.parallelTo("XY"));
-    funnel = envelope.clone()
-      .cut(section(outlet, outlet, bottom, d.funnelOutletX).loftWith(section(d.length - 4.8, d.width - 4.8, -3, d.length / 2), {}))
-      .cut(rounded(2.4, 2.4, -3.01, d.length - 4.8, d.width - 4.8, 3.2, 2))
-      .cut(rounded(d.funnelOutletX - outlet / 2, (d.width - outlet) / 2, bottom - 0.1, outlet, outlet, 0.2, 2))
-      .fillet(0.4, (finder) => finder.inPlane("XY", bottom).inBox(
-        [d.funnelOutletX - outlet / 2 - 1, (d.width - outlet) / 2 - 1, bottom - 0.01],
-        [d.funnelOutletX + outlet / 2 + 1, (d.width + outlet) / 2 + 1, bottom + 0.01]))
-      .fillet(0.4, (finder) => finder.inPlane("XY", 0).inBox([2.3, 2.3, -0.01], [d.length - 2.3, d.width - 2.3, 0.01]));
-    for (const p of d.funnelMounts) {
-      // Solid corner lands receive only the protruding magnets, not base bosses.
-      const land = p.y < d.width / 2 ? p.y : d.width - p.y;
-      const span = land + d.magnetPocketDiameter / 2 + 1.2;
-      const cornerLand = rounded(p.x < d.length / 2 ? 0 : d.length - span, p.y < d.width / 2 ? 0 : d.width - span,
-        z - d.magnetPocketDepth - 1.2, span, span, -z + d.magnetPocketDepth + 1.2, 2)
-        .fillet(0.6, (finder) => finder.parallelTo("XY"));
-      funnel = funnel.fuse(cornerLand.intersect(envelope.clone()))
-        .cut(cylinder(p.x, p.y, z, d.magnetPocketDiameter / 2, -z + 0.1));
-      funnel = settings.funnelAlignment === "magnets"
-        ? funnel.cut(cylinder(p.x, p.y, z - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1))
-        : funnel.fuse(cylinder(p.x, p.y, z - 0.1, (d.magnetPocketDiameter - 0.3) / 2, d.funnelBasePocketDepth - 0.2)
-          .fuse(cone(p.x, p.y, z + d.funnelBasePocketDepth * 0.45, d.magnetPocketDiameter / 2 + 0.2, (d.magnetPocketDiameter - 0.3) / 2, d.funnelBasePocketDepth * 0.25))
-          .cut(box(p.x - 0.3, p.y - d.magnetPocketDiameter, z - 0.05, 0.6, d.magnetPocketDiameter * 2, d.magnetPocketDepth + 0.2)));
-    }
-  }
-  options.onProgress?.({ phase: "building", completed: 5, total: 5, message: "Built funnel" });
+  partReady("lid", lid, 5);
   const parts = { base, tray, slider, lid, funnel };
   const completed: string[] = [];
   if (configuration.validate !== false) {
@@ -651,17 +667,8 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     const [min, max] = part.boundingBox.bounds;
     return [name, { volume: measureShapeVolumeProperties(part).volume, bounds: { min, max } }];
   })) as Record<"base" | "tray" | "slider" | "lid" | "funnel", PartDiagnostic>;
-  const meshTolerance = configuration.meshTolerance ?? 0.08;
-  const partMeshes = Object.fromEntries(Object.entries(parts).map(([name, part]) => {
-    const prior = reusable(name as keyof typeof keys);
-    if (prior?.meshTolerance === meshTolerance) return [name, prior.mesh];
-    const mesh = part.mesh({ tolerance: meshTolerance, angularTolerance: 0.2 });
-    return [name, {
-      positions: Float32Array.from(mesh.vertices),
-      normals: Float32Array.from(mesh.normals),
-      indices: Uint32Array.from(mesh.triangles),
-    }];
-  })) as Record<"base" | "tray" | "slider" | "lid" | "funnel", TriangleMesh>;
+  const partMeshes = Object.fromEntries(Object.entries(parts).map(([name, part]) =>
+    [name, prepareMesh(name as ModelPart, part)])) as Record<ModelPart, TriangleMesh>;
   for (const name of Object.keys(parts) as Array<keyof typeof parts>) {
     const prior = partCache[name];
     partCache[name] = { key: keys[name], shape: parts[name], mesh: partMeshes[name], meshTolerance, diagnostic: diagnostics[name], stl: prior?.key === keys[name] ? prior.stl : undefined };

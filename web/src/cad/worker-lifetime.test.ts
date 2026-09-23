@@ -115,3 +115,26 @@ it.each(modes)('bounds retries when posting to the %s worker throws synchronousl
   CadWorker.instances[1].complete(0)
   await pending
 })
+
+
+it.each(modes)('delivers %s parts before completion and ignores stale worker parts after retry', async (mode) => {
+  const generate = await generator(mode)
+  const onPart = vi.fn()
+  let complete = false
+  const pending = generate({}, { onPart }).then(() => { complete = true })
+  const old = CadWorker.instances[0]
+  const id = old.postMessage.mock.calls[0][0].id
+  const preview = { part: 'base', dimensions: {}, mesh: { positions: new Float32Array([1]), normals: new Float32Array([1]), indices: new Uint32Array([0]) } }
+  old.onmessage?.({ data: { type: 'part', id, preview } } as MessageEvent)
+  expect(onPart).toHaveBeenCalledWith(preview)
+  expect(complete).toBe(false)
+  fail(old, 'reply')
+  old.onmessage?.({ data: { type: 'part', id, preview: { ...preview, part: 'lid' } } } as MessageEvent)
+  expect(onPart).toHaveBeenCalledTimes(1)
+  const fresh = CadWorker.instances[1]
+  fresh.onmessage?.({ data: { type: 'part', id, preview } } as MessageEvent)
+  expect(onPart).toHaveBeenCalledTimes(2)
+  fresh.complete(0)
+  await pending
+  expect(complete).toBe(true)
+})

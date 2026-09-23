@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import type { PartPreview } from "../src/cad/types";
 import { generateModel } from "../src/cad/generate";
 import { createBambu3mf } from "../src/print3mf";
 import JSZip from "jszip";
@@ -23,7 +24,10 @@ describe("CAD export matrix", () => {
     { rows: 1, columns: 1, screw: "M2" as const, joint: "glue" as const, detent: false, slideClearance: 0.6 },
     { rows: 1, columns: 1, screw: "M2" as const, joint: "screws" as const, detentDiameter: 3.2, detentSpringLength: 6 },
   ])("generates the $screw $rows x $columns $joint validation case", async (settings) => {
-    const model = await generateModel(settings);
+    const streamed: PartPreview[] = [];
+    const model = await generateModel(settings, { onPart: (part) => streamed.push(part) });
+    expect(streamed.map(({ part }) => part)).toEqual(["base", "slider", "tray", "funnel", "lid"]);
+    for (const part of streamed) expect(part.mesh).toBe(model.partMeshes[part.part]);
     expect(model.diagnostics.base.bounds.min[2]).toBeCloseTo(0);
     expect(model.verification.completed).toContain("Release, retention, and shaft clearance checked at representative stations");
     expect(model.verification.completed).toContain("Low-side pullout groove, rigid nose-length slider rib, and full release travel verified");
