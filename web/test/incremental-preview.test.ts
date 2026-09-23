@@ -60,10 +60,9 @@ describe("incremental preview geometry", () => {
     }
 
     const joint = await generatePreviewModel({ rows: 2, columns: 2, detentSpringLength: 12, magnetThickness: 2.5, joint: "glue" });
-    for (const part of ["slider", "lid"] as const) {
-      expect(joint.partMeshes[part]).toBe(magnet.partMeshes[part]);
-    }
-    for (const part of ["base", "tray"] as const) {
+    // Removing the head chamber lowers the base and the whole moving stack.
+    expect(joint.dimensions.floor).toBeLessThan(magnet.dimensions.floor);
+    for (const part of ["base", "tray", "slider", "lid"] as const) {
       expect(joint.partMeshes[part]).not.toBe(magnet.partMeshes[part]);
     }
 

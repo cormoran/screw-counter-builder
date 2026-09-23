@@ -99,6 +99,9 @@ export interface DerivedDimensions {
   funnelMountZ: number;
   funnelBasePocketDepth: number;
   baseScrewHeadSeat: number;
+  baseMountTaperZ: number;
+  baseMountTaperTop: number;
+  funnelPegHeight: number;
   funnelMounts: Point2D[];
   detent?: DetentDimensions;
   joints: Point2D[];

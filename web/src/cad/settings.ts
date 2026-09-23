@@ -1,9 +1,21 @@
 import type { Settings, SettingsInput, ScrewPreset } from "./types";
 
-// Keep at least 0.7 mm above the standalone M2 head seat after removing
-// the old corner registration bosses, including minimum slider clearance.
+// Installation depth of the base magnet, below the common screw-head chamber.
 export const funnelBasePocketDepth = (settings: Settings) => settings.funnelAlignment === "screws" ? 0 : Math.min(0.9,
   settings.magnetThickness + settings.magnetDepthClearance - (settings.funnelAlignment === "magnets" ? 0.5 : 0));
+
+/** One shared magnet/head chamber and one 45-degree roof, without internal shelves. */
+export function baseMountDimensions(settings: Settings) {
+  const pocketDepth = funnelBasePocketDepth(settings);
+  const radius = (settings.magnetDiameter + settings.magnetDiameterClearance) / 2;
+  const headSeat = 2.3 + pocketDepth;
+  // The M2 head (R2.1) meets the same cone that closes the magnet chamber.
+  const taperZ = settings.joint === "screws" ? headSeat - (radius - 2.1) : pocketDepth;
+  const taperTop = taperZ + radius - 1.2;
+  const minimumJoinZ = settings.funnelAlignment === "screws" ? 0 : taperTop + 0.5;
+  const floor = Math.max(1.6, minimumJoinZ - 2 - 2 * settings.slideClearance);
+  return { radius, headSeat, taperZ, taperTop, floor };
+}
 
 export const SCREW_PRESETS: Readonly<Record<string, ScrewPreset>> = {
   "M1.5": { shaft: 1.5, head: 3, slot: 2.1, pitch: 8 },
@@ -96,7 +108,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   if (settings.detentSpringLength < 6 || settings.detentSpringLength > 18) errors.push("detentSpringLength must be 6..18 mm");
   if (settings.detentDiameter < 2 || settings.detentDiameter > 3.2) errors.push("detentDiameter must be 2.0..3.2 mm");
   // The short corner screw stops below the magnet pocket, even at minimum height.
-  const deckTop = 1.6 + 2 * settings.slideClearance + 2 + 0.75;
+  const deckTop = baseMountDimensions(settings).floor + 2 * settings.slideClearance + 2 + 0.75;
   const magnetPocketBottom = deckTop + settings.screwSpaceHeight + 1.2 - settings.magnetThickness - settings.magnetDepthClearance;
   if (settings.joint === "screws" && magnetPocketBottom < (settings.funnelAlignment === "screws" ? 8.2 : 7.8 + funnelBasePocketDepth(settings))) errors.push("Need at least 0.5 mm between the corner screw and magnet pocket; increase screw space height or use a thinner magnet");
   if (!preset) return errors;

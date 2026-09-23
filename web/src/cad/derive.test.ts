@@ -59,11 +59,23 @@ describe("browser CAD dimensions", () => {
     expect(validateSettings({ magnetDiameter: 3, joint: "glue" })).toEqual([]);
   });
 
+  it("fits a complete support-free common-chamber roof below the mating plane", () => {
+    for (const magnetDiameter of [5, 6, 8]) for (const slideClearance of [0.15, 0.2, 0.6]) for (const funnelAlignment of ["magnets", "pegs"] as const) {
+      const d = deriveDimensions({ magnetDiameter, slideClearance, funnelAlignment });
+      expect(d.baseMountTaperTop - d.baseMountTaperZ).toBeCloseTo(d.magnetPocketDiameter / 2 - 1.2);
+      expect(d.joinZ - d.baseMountTaperTop).toBeGreaterThanOrEqual(0.5 - 1e-8);
+      expect(d.baseMountTaperZ + d.magnetPocketDiameter / 2 - 2.1).toBeCloseTo(d.baseScrewHeadSeat);
+      expect(d.funnelPegHeight).toBeLessThan(d.baseMountTaperZ);
+    }
+    expect(deriveDimensions().joinZ).toBeCloseTo(4.6);
+    expect(deriveDimensions({ funnelAlignment: "screws" }).joinZ).toBeCloseTo(4);
+  });
+
   it("derives the print-feedback M2 4x2 dimensions", () => {
     const d = deriveDimensions({ rows: 4, columns: 2, screw: "M2" });
     expect(d.length).toBeCloseTo(43.25);
     expect(d.width).toBeCloseTo(53);
-    expect(d.top).toBeCloseTo(20.95);
+    expect(d.top).toBeCloseTo(21.55);
     expect(d.pitch).toBe(8);
     expect(d.head).toBeCloseTo(3.2);
     expect(d.drop).toBeCloseTo(3.5);

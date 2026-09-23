@@ -102,17 +102,8 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     for (const x of d.screwXs) for (const y of d.screwYs) {
       base = base.cut(box(x - d.drop / 2, y - d.drop / 2, -0.1, d.drop, d.drop, d.floor + 0.2));
     }
-    for (const p of d.joints) {
-      if (settings.joint === "screws") {
-        if (settings.funnelAlignment === "screws") {
-          base = base.cut(cylinder(p.x, p.y, -0.1, 1.2, d.joinZ + 0.2));
-          continue;
-        }
-        // Recess the M2 head above the underside magnet, retaining its 45-degree roof.
-        base = base.cut(cylinder(p.x, p.y, -0.1, 1.2, d.joinZ + 1.5))
-          .cut(cylinder(p.x, p.y, -0.1, 2.3, d.baseScrewHeadSeat + 0.1))
-          .cut(cone(p.x, p.y, d.baseScrewHeadSeat, 2.3, 1.2, 1.1));
-      }
+    if (settings.funnelAlignment === "screws") for (const p of d.joints) {
+      base = base.cut(cylinder(p.x, p.y, -0.1, 1.2, d.joinZ + 0.2));
     }
     if (d.detent) {
       // The notch stops above the floor and never perforates the underside.
@@ -132,11 +123,12 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
         .cut(cone(p.x, p.y, -0.05, 1.45, 0.4, 1.05));
     }
     if (settings.funnelAlignment !== "screws") for (const p of d.funnelMounts) {
-      // Cut into the original flat base: never add material below Z=0.
-      base = base.cut(cylinder(p.x, p.y, -0.1, d.magnetPocketDiameter / 2, d.funnelBasePocketDepth + 0.1));
-      if (settings.funnelAlignment === "pegs") {
-        base = base.cut(cylinder(p.x, p.y, d.funnelBasePocketDepth * 0.4, d.magnetPocketDiameter / 2 + 0.3, d.funnelBasePocketDepth * 0.6));
-      }
+      // One bore holds the magnet/press peg and, where used, the M2 head.
+      // Its only reduction is a complete 45-degree cone to the through-hole.
+      const radius = d.magnetPocketDiameter / 2;
+      base = base.cut(cylinder(p.x, p.y, -0.1, radius, d.baseMountTaperZ + 0.1))
+        .cut(cone(p.x, p.y, d.baseMountTaperZ, radius, 1.2, radius - 1.2))
+        .cut(cylinder(p.x, p.y, d.baseMountTaperTop, 1.2, d.joinZ - d.baseMountTaperTop + 0.1));
     }
   }
   partReady("base", base, 1);
@@ -301,9 +293,9 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
         .cut(cylinder(p.x, p.y, z, d.magnetPocketDiameter / 2, -z + 0.1));
       funnel = settings.funnelAlignment === "magnets"
         ? funnel.cut(cylinder(p.x, p.y, z - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1))
-        : funnel.fuse(cylinder(p.x, p.y, z - 0.1, (d.magnetPocketDiameter - 0.3) / 2, d.funnelBasePocketDepth - 0.2)
-          .fuse(cone(p.x, p.y, z + d.funnelBasePocketDepth * 0.45, d.magnetPocketDiameter / 2 + 0.2, (d.magnetPocketDiameter - 0.3) / 2, d.funnelBasePocketDepth * 0.25))
-          .cut(box(p.x - 0.3, p.y - d.magnetPocketDiameter, z - 0.05, 0.6, d.magnetPocketDiameter * 2, d.magnetPocketDepth + 0.2)));
+        : funnel.fuse(cylinder(p.x, p.y, z - 0.1, d.magnetPocketDiameter / 2 + 0.08, d.funnelPegHeight - 0.2)
+          .fuse(cone(p.x, p.y, z + d.funnelPegHeight - 0.3, d.magnetPocketDiameter / 2 + 0.08, d.magnetPocketDiameter / 2 - 0.22, 0.3))
+          .cut(box(p.x - 0.3, p.y - d.magnetPocketDiameter, z - 0.05, 0.6, d.magnetPocketDiameter * 2, d.funnelPegHeight + 0.2)));
     }
   }
   partReady("funnel", funnel, 4);
@@ -366,11 +358,20 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   if (configuration.validate !== false) {
   if (Object.values(parts).every((part) => !part.isNull && part.solids.length === 1)) completed.push("5 valid single solids");
   else throw new Error(`CAD build produced a null or multi-solid part: ${Object.entries(parts).map(([name, part]) => `${name}=${part.solids.length}`).join(", ")}`);
+  // Split pegs intentionally compress radially by 0.08 mm when installed.
+  // Exclude only these elastic regions from the rigid assembly collision check.
+  let rigidFunnel = funnel;
+  if (settings.funnelAlignment === "pegs") for (const p of d.funnelMounts) {
+    rigidFunnel = rigidFunnel.cut(cylinder(p.x, p.y, 0, d.magnetPocketDiameter / 2 + 0.1, d.funnelPegHeight + 0.1));
+  }
+  const collisionParts = { ...parts, funnel: rigidFunnel };
   const names = Object.keys(parts) as Array<keyof typeof parts>;
   for (let i = 0; i < names.length; i += 1) for (let j = i + 1; j < names.length; j += 1) {
-    if (intersectionVolume(parts[names[i]], parts[names[j]]) >= 1e-5) throw new Error(`Assembly interference: ${names[i]} / ${names[j]}`);
+    if (intersectionVolume(collisionParts[names[i]], collisionParts[names[j]]) >= 1e-5) throw new Error(`Assembly interference: ${names[i]} / ${names[j]}`);
   }
-  completed.push("No pairwise assembly interference at the closed position");
+  completed.push(settings.funnelAlignment === "pegs"
+    ? "No rigid assembly interference outside the split-peg compression regions"
+    : "No pairwise assembly interference at the closed position");
   const outletProbe = rounded(d.funnelOutletX - settings.funnelOutlet / 2 + 0.1, (d.width - settings.funnelOutlet) / 2 + 0.1,
     -d.funnelDepth - 0.1, settings.funnelOutlet - 0.2, settings.funnelOutlet - 0.2, 0.2, 1.9);
   if (intersectionVolume(funnel, outletProbe) >= 1e-5) throw new Error("Funnel outlet must remain open");
@@ -386,8 +387,10 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
         if (intersectionVolume(part, cylinder(p.x, p.y, z, settings.magnetDiameter / 2, settings.magnetThickness)) >= 1e-5) throw new Error("Funnel magnet pocket is blocked");
       }
     } else if (settings.funnelAlignment === "pegs") {
-      // A shoulder catches the split peg after insertion; insertion flex is unmeasured.
-      if (intersectionVolume(base, funnel.clone().translate(0, 0, -d.funnelBasePocketDepth * 0.35)) < 0.001) throw new Error("Funnel snap pegs lack retaining shoulders");
+      const peg = cylinder(p.x, p.y, 0, d.magnetPocketDiameter / 2 + 0.1, d.funnelPegHeight);
+      const overlap = intersectionVolume(base, funnel.intersect(peg));
+      const maxOverlap = Math.PI * ((d.magnetPocketDiameter / 2 + 0.081) ** 2 - (d.magnetPocketDiameter / 2) ** 2) * d.funnelPegHeight;
+      if (overlap < 0.001 || overlap > maxOverlap) throw new Error("Split peg interference must stay within its 0.08 mm radial compression allowance");
     }
   }
   for (const part of [base, funnel]) {
@@ -402,9 +405,28 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     if (intersectionVolume(base, cylinder(p.x, p.y, d.joinZ - 0.2, 2.1, 0.15)) < 0.1) throw new Error("Base screw head lacks a retaining roof");
     const head = cylinder(p.x, p.y, d.baseScrewHeadSeat - 2.2, 2.1, 2.2);
     const shaft = cylinder(p.x, p.y, d.baseScrewHeadSeat, 0.8, 5);
-    if (intersectionVolume(base, head) >= 1e-5 || intersectionVolume(tray, shaft) >= 1e-5 ||
+    if (intersectionVolume(base, head) >= 1e-5 || intersectionVolume(funnel, head) >= 1e-5 || intersectionVolume(tray, shaft) >= 1e-5 ||
         d.baseScrewHeadSeat - 2.2 < d.funnelBasePocketDepth + 0.09) throw new Error("Assembly screw overlaps the funnel attachment or its pilot");
   }
+  if (settings.funnelAlignment !== "screws") {
+    for (const p of d.funnelMounts) {
+      const radius = d.magnetPocketDiameter / 2;
+      // Probe the full former shelf/head-bore span, plus both sides of the
+      // new cone. A two-stage recess or a horizontal ledge fails this check.
+      for (const z of [0.1, d.baseMountTaperZ - 0.1]) {
+        const open = cylinder(p.x, p.y, z, radius - 0.04, 0.03);
+        if (intersectionVolume(base, open) >= 1e-5) throw new Error("Base mount chamber must have one constant diameter");
+      }
+      for (const fraction of [0.2, 0.5, 0.8]) {
+        const z = d.baseMountTaperZ + (radius - 1.2) * fraction;
+        const r = radius - (z - d.baseMountTaperZ);
+        if (intersectionVolume(base, cylinder(p.x + r - 0.08, p.y, z, 0.02, 0.02)) >= 1e-5 ||
+            intersectionVolume(base, cylinder(p.x + r + 0.08, p.y, z, 0.02, 0.02)) < 0.00002) throw new Error("Base mount must retain one continuous 45-degree roof");
+      }
+    }
+    completed.push("Base mounts have a single common chamber and continuous 45-degree roofs without shelves");
+  }
+  if (settings.funnelAlignment === "pegs") completed.push("Split funnel pegs retain bounded 0.08 mm radial press-fit interference");
   if (settings.funnelAlignment !== "screws") completed.push("Flat base underside and recessed screw heads clear funnel magnets or pegs");
   completed.push("Funnel mouth, continuous outlet, and attachment clearances verified");
   for (const x of [0.2, d.length - 0.2]) for (const y of [0.2, d.width - 0.2]) {
@@ -683,5 +705,5 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     "slider.stl": partStl("slider", slider), "lid.stl": partCache.lid!.stl ??= printOrientation(lid.clone().rotate(180, [0, 0, 0], [1, 0, 0])).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }),
     "assembly.step": exportSTEP([{ shape: base, name: "base" }, { shape: tray, name: "tray" }, { shape: slider, name: "slider" }, { shape: lid, name: "lid" }, { shape: funnel, name: "funnel" }]),
   };
-  return { files, warnings: [], verification: { completed, pending: ["Full per-station release and retention checks", "Physical print fit and detent force of the browser revision", "Funnel screw flow, bridging, snap insertion force, and magnet retention"] }, diagnostics, partMeshes };
+  return { files, warnings: [], verification: { completed, pending: ["Full per-station release and retention checks", "Physical print fit and detent force of the browser revision", "Funnel screw flow, bridging, press-fit insertion force, and magnet retention"] }, diagnostics, partMeshes };
 }
