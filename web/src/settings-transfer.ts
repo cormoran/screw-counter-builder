@@ -13,11 +13,11 @@ export function parseSettingsFile(contents: string): Settings {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid settings file')
   const document = value as Record<string, unknown>
   if (document.format !== FORMAT || document.version !== VERSION || !document.settings || typeof document.settings !== 'object' || Array.isArray(document.settings)) throw new Error('Invalid settings file')
-  const raw = document.settings as Record<string, unknown>
+  const raw: Record<string, unknown> = { screwLength: DEFAULT_SETTINGS.screwLength, trayStyle: DEFAULT_SETTINGS.trayStyle, lidStyle: DEFAULT_SETTINGS.lidStyle, funnelAlignment: DEFAULT_SETTINGS.funnelAlignment, funnelOutlet: DEFAULT_SETTINGS.funnelOutlet, ...document.settings as Record<string, unknown> }
   const keys = Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[]
   if (keys.some((key) => !(key in raw)) || Object.keys(raw).some((key) => !keys.includes(key as keyof Settings))) throw new Error('Invalid settings file')
   if (typeof raw.detent !== 'boolean' || typeof raw.rows !== 'number' || typeof raw.columns !== 'number') throw new Error('Invalid settings file')
-  for (const key of ['detentSpringWidth', 'detentSpringLength', 'detentDiameter', 'magnetDiameter', 'magnetThickness', 'magnetDiameterClearance', 'magnetDepthClearance', 'slideClearance', 'trayHoleClearance', 'screwSpaceHeight'] as const) {
+  for (const key of ['screwLength', 'detentSpringWidth', 'detentSpringLength', 'detentDiameter', 'magnetDiameter', 'magnetThickness', 'magnetDiameterClearance', 'magnetDepthClearance', 'slideClearance', 'trayHoleClearance', 'screwSpaceHeight'] as const) {
     if (typeof raw[key] !== 'number') throw new Error('Invalid settings file')
   }
   for (const key of ['headDiameter', 'shaftDiameter', 'slotWidth', 'pitch'] as const) {

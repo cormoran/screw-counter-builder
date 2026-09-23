@@ -1,5 +1,9 @@
 import type { Settings, SettingsInput, ScrewPreset } from "./types";
 
+// Limit the recess so the M2 head seat still fits inside the base corner land.
+export const funnelBasePocketDepth = (settings: Settings) => Math.min(1.5,
+  settings.magnetThickness + settings.magnetDepthClearance - (settings.funnelAlignment === "magnets" ? 0.5 : 0));
+
 export const SCREW_PRESETS: Readonly<Record<string, ScrewPreset>> = {
   "M1.5": { shaft: 1.5, head: 3, slot: 2.1, pitch: 8 },
   M2: { shaft: 2, head: 3.2, slot: 2.6, pitch: 8 },
@@ -8,6 +12,7 @@ export const SCREW_PRESETS: Readonly<Record<string, ScrewPreset>> = {
 
 /** Side-length clearance at the straight square base outlet, tuned from print feedback. */
 export const BASE_HOLE_SIDE_CLEARANCE = 0.3;
+export const TRAY_ENTRY_FLARE = 0.3;
 export const RELEASE_WINDOW_DIAMETER_CLEARANCE = 1.0;
 
 export function resolveScrewDimensions(settings: Settings): { headDiameter: number; shaftDiameter: number; slotWidth: number; pitch: number } | null {
@@ -31,8 +36,13 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   rows: 4,
   columns: 10,
   screw: "M2",
+  screwLength: 5,
+  trayStyle: "auto",
   joint: "screws",
   lidAlignment: "magnets",
+  lidStyle: "full",
+  funnelAlignment: "magnets",
+  funnelOutlet: 10,
   magnetDiameter: 6,
   magnetThickness: 2,
   magnetDiameterClearance: 0.3,
@@ -62,8 +72,14 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   if (!Number.isInteger(settings.rows) || settings.rows < 1 || settings.rows > MAX_ROWS || !Number.isInteger(settings.columns) || settings.columns < 1 || settings.columns > MAX_COLUMNS) {
     errors.push(`rows and columns must be positive integers within ${MAX_ROWS} × ${MAX_COLUMNS}`);
   }
+  if (!Number.isFinite(settings.screwLength) || settings.screwLength < 1 || settings.screwLength > 100) errors.push("screwLength must be 1..100 mm");
+  if (!["auto", "holes", "cutout"].includes(settings.trayStyle)) errors.push("trayStyle must be auto, holes or cutout");
   if (settings.joint !== "screws" && settings.joint !== "glue") errors.push("joint must be screws or glue");
+  if (!["full", "cutout"].includes(settings.lidStyle)) errors.push("lidStyle must be full or cutout");
   if (settings.lidAlignment !== "magnets" && settings.lidAlignment !== "pegs") errors.push("lidAlignment must be magnets or pegs");
+  if (!["magnets", "pegs"].includes(settings.funnelAlignment)) errors.push("funnelAlignment must be magnets or pegs");
+  if (!Number.isFinite(settings.funnelOutlet) || settings.funnelOutlet < 5 || settings.funnelOutlet > 24) errors.push("funnelOutlet must be 5..24 mm");
+  if (settings.joint === "screws" && settings.magnetDiameter < 5) errors.push("Screw joints need magnet or peg diameter at least 5 mm for screw access");
   if (settings.magnetDiameter < 3 || settings.magnetDiameter > 8) errors.push("Supported magnet diameter is 3..8 mm");
   if (settings.magnetThickness < 1 || settings.magnetThickness > 3) errors.push("Supported magnet thickness is 1..3 mm");
   if (settings.slideClearance < 0.15 || settings.slideClearance > 0.6) errors.push("slideClearance must be 0.15..0.6 mm");
@@ -78,7 +94,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   // The short corner screw stops below the magnet pocket, even at minimum height.
   const deckTop = 1.6 + 2 * settings.slideClearance + 2 + 0.75;
   const magnetPocketBottom = deckTop + settings.screwSpaceHeight + 1.2 - settings.magnetThickness - settings.magnetDepthClearance;
-  if (settings.joint === "screws" && magnetPocketBottom < 7.8) errors.push("Need at least 0.5 mm between the corner screw and magnet pocket; increase screw space height or use a thinner magnet");
+  if (settings.joint === "screws" && magnetPocketBottom < 7.8 + funnelBasePocketDepth(settings)) errors.push("Need at least 0.5 mm between the corner screw and magnet pocket; increase screw space height or use a thinner magnet");
   if (!preset) return errors;
   const numericValues = [
     settings.screwSpaceHeight, settings.magnetDiameter, settings.magnetThickness, settings.magnetDiameterClearance,
@@ -92,6 +108,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   const resolved = resolveScrewDimensions(settings)!;
   const shaft = resolved.shaftDiameter;
   const head = resolved.headDiameter;
+  if (settings.funnelOutlet < head + 1) errors.push("Funnel outlet needs at least head + 1 mm");
   const slot = resolved.slotWidth;
   if (!(shaft > 0 && shaft + 0.3 <= slot && slot <= head - 0.6)) errors.push("Need shaft + 0.3 <= slot <= head - 0.6; measure the actual screw");
   const window = head + RELEASE_WINDOW_DIAMETER_CLEARANCE;

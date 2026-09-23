@@ -12,14 +12,20 @@ export interface Settings {
   rows: number;
   columns: number;
   screw: ScrewSize;
+  /** Target screw length; selects the tray style in auto mode. */
+  screwLength: number;
+  trayStyle: "auto" | "holes" | "cutout";
   joint: JointType;
   lidAlignment: LidAlignment;
+  lidStyle: "full" | "cutout";
+  funnelAlignment: LidAlignment;
+  funnelOutlet: number;
   magnetDiameter: number;
   magnetThickness: number;
   magnetDiameterClearance: number;
   magnetDepthClearance: number;
   slideClearance: number;
-  /** Extra side length beyond a measured screw head in each square base outlet. */
+  /** Extra side length beyond a measured screw head in each square base or tray opening. */
   trayHoleClearance: number;
   /** Free vertical space above the tray deck, below the lid lip, in mm. */
   screwSpaceHeight: number;
@@ -61,6 +67,7 @@ export interface DetentDimensions {
 
 /** Calculated dimensions shared by preview, CAD construction, and export metadata. */
 export interface DerivedDimensions {
+  trayStyle: "holes" | "cutout";
   shaft: number;
   head: number;
   slot: number;
@@ -83,6 +90,12 @@ export interface DerivedDimensions {
   deckTop: number;
   screwSpaceHeight: number;
   top: number;
+  funnelDepth: number;
+  funnelOutletX: number;
+  funnelMountZ: number;
+  funnelBasePocketDepth: number;
+  baseScrewHeadSeat: number;
+  funnelMounts: Point2D[];
   detent?: DetentDimensions;
   joints: Point2D[];
   magnets: Point2D[];
@@ -90,12 +103,13 @@ export interface DerivedDimensions {
   magnetPocketDepth: number;
 }
 
-export type ModelPart = "base" | "tray" | "slider" | "lid";
+export type ModelPart = "base" | "tray" | "slider" | "lid" | "funnel";
 export type GeneratedFileName =
   | "base.stl"
   | "tray.stl"
   | "slider.stl"
   | "lid.stl"
+  | "funnel.stl"
   | "assembly.step"
   | "dimensions.json";
 
@@ -141,7 +155,12 @@ export interface PreviewModel {
   partMeshes: Record<ModelPart, TriangleMesh>;
 }
 
+export type PartPreview = { part: ModelPart; mesh: TriangleMesh; dimensions: DerivedDimensions };
+export type ProgressivePreview = { dimensions: DerivedDimensions; partMeshes: Partial<Record<ModelPart, TriangleMesh>> };
+
 export interface GenerateOptions {
+  /** Emitted as each part is meshed, before the whole model is ready. */
+  onPart?: (preview: PartPreview) => void;
   onProgress?: (progress: GenerationProgress) => void;
   signal?: AbortSignal;
 }

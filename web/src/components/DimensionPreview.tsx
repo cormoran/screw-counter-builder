@@ -17,6 +17,7 @@ export function DimensionPreview({ dimensions, language, compact = false }: Prop
   return <div className={`preview-wrap${compact ? ' compact' : ''}`}>
     <svg className="dimension-preview" viewBox="0 0 320 230" role="img" aria-label={text(language, 'topPreview', { length: format(language, dimensions.length), width: format(language, dimensions.width) })}>
       <rect x={(320 - w) / 2} y={(195 - h) / 2} width={w} height={h} rx="11" className="body" />
+      {dimensions.trayStyle === 'cutout' && <rect x={(320 - w) / 2 + dimensions.rim * scale} y={(195 - h) / 2 + (dimensions.sliderInsetY + 2) * scale} width={(width - 2 * dimensions.rim) * scale} height={(height - 2 * (dimensions.sliderInsetY + 2)) * scale} rx={2 * scale} className="hole" />}
       {dimensions.screwXs.map((x) => dimensions.screwYs.map((y) => <rect key={`${x}-${y}`} x={(320 - w) / 2 + (x - dimensions.drop / 2) * scale} y={(195 - h) / 2 + (y - dimensions.drop / 2) * scale} width={dimensions.drop * scale} height={dimensions.drop * scale} className="hole" />))}
       <line x1={(320 - w) / 2} x2={(320 + w) / 2} y1="211" y2="211" className="measure" />
       <text x="160" y="226" textAnchor="middle">{format(language, dimensions.length)} mm</text>

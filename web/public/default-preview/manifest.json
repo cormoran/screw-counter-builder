@@ -8,8 +8,13 @@
     "rows": 4,
     "columns": 10,
     "screw": "M2",
+    "screwLength": 5,
+    "trayStyle": "auto",
     "joint": "screws",
     "lidAlignment": "magnets",
+    "lidStyle": "full",
+    "funnelAlignment": "magnets",
+    "funnelOutlet": 10,
     "magnetDiameter": 6,
     "magnetThickness": 2,
     "magnetDiameterClearance": 0.3,
@@ -26,8 +31,9 @@
     "base": "base.mesh",
     "tray": "tray.mesh",
     "slider": "slider.mesh",
-    "lid": "lid.mesh"
+    "lid": "lid.mesh",
+    "funnel": "funnel.mesh"
   },
-  "rawBytes": 699936,
-  "gzipBytes": 164719
+  "rawBytes": 1240572,
+  "gzipBytes": 366080
 }

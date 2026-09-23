@@ -49,10 +49,15 @@ export function getSettingsFields(language: Language): readonly Field[] {
   const t = (key: Parameters<typeof text>[1]) => text(language, key)
   return [
     { key: 'screw', category: 'basic', label: t('fieldScrew'), description: t('fieldScrewDescription'), kind: 'select', options: screwOptions },
+    { key: 'screwLength', category: 'basic', label: t('fieldScrewLength'), description: t('fieldScrewLengthDescription'), kind: 'number', unit: 'mm', min: 1, max: 100, step: 0.1 },
+    { key: 'trayStyle', category: 'basic', label: t('fieldTrayStyle'), description: t('fieldTrayStyleDescription'), kind: 'select', options: [{ value: 'auto', label: t('trayAuto') }, { value: 'holes', label: t('trayHoles') }, { value: 'cutout', label: t('trayCutout') }] },
     { key: 'rows', category: 'basic', label: t('fieldRows'), description: t('fieldRowsDescription'), kind: 'number', unit: t('pieces'), min: 1, max: MAX_ROWS, step: 1 },
     { key: 'columns', category: 'basic', label: t('fieldColumns'), description: t('fieldColumnsDescription'), kind: 'number', unit: t('times'), min: 1, max: MAX_COLUMNS, step: 1 },
     { key: 'screwSpaceHeight', category: 'operation', label: t('fieldScrewSpaceHeight'), description: t('fieldScrewSpaceHeightDescription'), kind: 'number', unit: 'mm', min: 3.5, max: 30, step: 0.1 },
     { key: 'joint', category: 'operation', label: t('fieldJoint'), description: t('fieldJointDescription'), kind: 'select', options: [{ value: 'screws', label: t('screws') }, { value: 'glue', label: t('glue') }] },
+    { key: 'funnelAlignment', category: 'operation', label: t('fieldFunnelAlignment'), description: t('fieldFunnelAlignmentDescription'), kind: 'select', options: [{ value: 'magnets', label: t('magnets') }, { value: 'pegs', label: t('pegs') }] },
+    { key: 'funnelOutlet', category: 'operation', label: t('fieldFunnelOutlet'), description: t('fieldFunnelOutletDescription'), kind: 'number', unit: 'mm', min: 5, max: 24, step: 1 },
+    { key: 'lidStyle', category: 'operation', label: t('fieldLidStyle'), description: t('fieldLidStyleDescription'), kind: 'select', options: [{ value: 'full', label: t('lidFull') }, { value: 'cutout', label: t('lidCutout') }] },
     { key: 'lidAlignment', category: 'operation', label: t('fieldLidAlignment'), description: t('fieldLidAlignmentDescription'), kind: 'select', options: [{ value: 'magnets', label: t('magnets') }, { value: 'pegs', label: t('pegs') }] },
     { key: 'detent', category: 'operation', label: t('fieldDetent'), description: t('fieldDetentDescription'), kind: 'boolean' },
     { key: 'detentSpringWidth', category: 'operation', label: t('fieldDetentSpringWidth'), description: t('fieldDetentSpringWidthDescription'), kind: 'number', unit: 'mm', min: 1, max: 1.5, step: 0.05 },

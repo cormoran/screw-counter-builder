@@ -1,15 +1,20 @@
 import { assertValidSettings } from './settings'
-import type { GenerateOptions, GeneratedModel, GenerationProgress, SettingsInput } from './types'
+import type { PartPreview, GenerateOptions, GeneratedModel, GenerationProgress, SettingsInput } from './types'
 
 type WorkerReply =
+  | { type: 'part'; id: number; preview: PartPreview }
   | { type: 'progress'; id: number; progress: GenerationProgress }
   | { type: 'complete'; id: number; model: GeneratedModel }
   | { type: 'error'; id: number; message: string }
 
 type PendingRequest = {
+  request: { type: 'generate'; id: number; settings: ReturnType<typeof assertValidSettings> }
+  worker?: Worker
+  retries: number
   abort: () => void
   resolve: (model: GeneratedModel) => void
   reject: (reason: unknown) => void
+  onPart?: GenerateOptions['onPart']
   onProgress?: (progress: GenerationProgress) => void
   signal?: AbortSignal
 }
@@ -47,10 +52,36 @@ function scheduleIdleTermination() {
 function failWorker(worker: Worker, message: string) {
   if (modelWorker !== worker) return
   modelWorker = undefined
+  if (idleTermination) clearTimeout(idleTermination)
+  idleTermination = undefined
   worker.terminate()
-  for (const [id, pending] of pendingRequests) {
-    removePendingRequest(id)
-    pending.reject(new Error(message))
+  // Every request assigned to this kernel must restart, including queued jobs.
+  // Each caller gets at most one retry; completed/aborted callers are absent.
+  for (const [id, pending] of [...pendingRequests]) {
+    if (pending.worker !== worker) continue
+    if (pending.retries >= 1) {
+      removePendingRequest(id)
+      pending.reject(new Error(message))
+    } else {
+      pending.retries++
+      sendRequest(id)
+    }
+  }
+}
+
+function sendRequest(id: number) {
+  const pending = pendingRequests.get(id)
+  if (!pending) return
+  try {
+    pending.worker = getModelWorker()
+    pending.worker.postMessage(pending.request)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (pending.worker && modelWorker === pending.worker) failWorker(pending.worker, message)
+    else {
+      removePendingRequest(id)
+      pending.reject(new Error(message))
+    }
   }
 }
 
@@ -63,18 +94,19 @@ function getModelWorker() {
 
   const worker = new Worker(new URL('./worker-entry.ts', import.meta.url), { type: 'module' })
   worker.onmessage = (event: MessageEvent<WorkerReply>) => {
+    if (modelWorker !== worker) return
     const reply = event.data
+    if (reply.type === 'error') { failWorker(worker, reply.message); return }
     const pending = pendingRequests.get(reply.id)
-    if (!pending) return
+    if (!pending || pending.worker !== worker) return
 
-    if (reply.type === 'progress') {
+    if (reply.type === 'part') {
+      pending.onPart?.(reply.preview)
+    } else if (reply.type === 'progress') {
       pending.onProgress?.(reply.progress)
     } else if (reply.type === 'complete') {
       removePendingRequest(reply.id)
       pending.resolve(reply.model)
-    } else {
-      removePendingRequest(reply.id)
-      pending.reject(new Error(reply.message))
     }
   }
   worker.onerror = (event) => failWorker(worker, event.message || 'CAD worker failed')
@@ -94,18 +126,8 @@ export function generateModel(input: SettingsInput = {}, options: GenerateOption
       removePendingRequest(id)
       reject(abortError())
     }
-    pendingRequests.set(id, { abort, onProgress: options.onProgress, reject, resolve, signal: options.signal })
+    pendingRequests.set(id, { request: { type: 'generate', id, settings }, retries: 0, abort, onPart: options.onPart, onProgress: options.onProgress, reject, resolve, signal: options.signal })
     options.signal?.addEventListener('abort', abort, { once: true })
-    try {
-      getModelWorker().postMessage({ type: 'generate', id, settings })
-    } catch (error) {
-      const worker = modelWorker
-      const message = error instanceof Error ? error.message : String(error)
-      if (worker) failWorker(worker, message)
-      else {
-        removePendingRequest(id)
-        reject(new Error(message))
-      }
-    }
+    sendRequest(id)
   })
 }

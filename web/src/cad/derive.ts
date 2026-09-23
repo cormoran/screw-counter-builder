@@ -1,4 +1,4 @@
-import { assertValidSettings, RELEASE_WINDOW_DIAMETER_CLEARANCE, resolveScrewDimensions } from "./settings";
+import { assertValidSettings, funnelBasePocketDepth, RELEASE_WINDOW_DIAMETER_CLEARANCE, resolveScrewDimensions } from "./settings";
 import type { DerivedDimensions, Settings, SettingsInput } from "./types";
 
 /** Browser CAD dimensions. Keep shape decisions here for future UI controls. */
@@ -29,13 +29,22 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
   const deckTop = joinZ + deckThickness;
   // The lid lip projects 1.2 mm below the mating plane.
   const top = deckTop + c.screwSpaceHeight + 1.2;
-  const magnetCenter = rim / 2 + 0.5;
+  // Move all coaxial mounts outward while retaining pocket and corner-pad walls.
+  const magnetCenter = Math.max(4.5, (c.magnetDiameter + c.magnetDiameterClearance) / 2 + 1.35);
   const magnets = [magnetCenter, length - magnetCenter].flatMap((x) => [magnetCenter, width - magnetCenter].map((y) => ({ x, y })));
   const joints = magnets.map(({ x, y }) => ({ x, y }));
   const result: DerivedDimensions = {
+    trayStyle: c.trayStyle === "auto" ? (c.screwLength <= 5 ? "holes" : "cutout") : c.trayStyle,
     shaft, head, slot, drop, window, pitch, rim, wall, sliderInsetY, releaseX,
     screwXs, screwYs, length, width, floor, sliderZ, sliderThickness, joinZ, deckThickness, deckTop, screwSpaceHeight: c.screwSpaceHeight, top,
     joints, magnets,
+    funnelDepth: 14,
+    // Only the magnet projects below the flat base; the funnel receives it.
+    funnelMountZ: c.funnelAlignment === "magnets" ? funnelBasePocketDepth(c) - c.magnetThickness - c.magnetDepthClearance : 0,
+    funnelBasePocketDepth: funnelBasePocketDepth(c),
+    baseScrewHeadSeat: 2.3 + funnelBasePocketDepth(c),
+    funnelMounts: joints.map(({ x, y }) => ({ x, y })),
+    funnelOutletX: 2.4 + c.funnelOutlet / 2 + (length - 4.8 - c.funnelOutlet) * 0.2,
     magnetPocketDiameter: c.magnetDiameter + c.magnetDiameterClearance,
     magnetPocketDepth: c.magnetThickness + c.magnetDepthClearance,
   };

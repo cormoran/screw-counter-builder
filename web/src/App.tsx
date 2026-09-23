@@ -1,6 +1,7 @@
+import { PreviewMeshCache } from './cad/preview-mesh-cache'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import JSZip from 'jszip'
-import { DEFAULT_PREVIEW_CONFIRM_BYTES, DEFAULT_SETTINGS, deriveDimensions, generateModel, generatePreviewModel, getDefaultPreviewInfo, loadDefaultPreview, validateSettings, type GeneratedModel, type ModelPart, type PreviewModel, type Settings, type TriangleMesh } from './cad'
+import { DEFAULT_PREVIEW_CONFIRM_BYTES, DEFAULT_SETTINGS, deriveDimensions, generateModel, generatePreviewModel, getDefaultPreviewInfo, loadDefaultPreview, validateSettings, type GeneratedModel, type ModelPart, type ProgressivePreview, type Settings, type TriangleMesh } from './cad'
 import { createBambu3mf, type Print3mfArtifact } from './print3mf'
 import { DimensionPreview } from './components/DimensionPreview'
 import type { ViewMode, ViewerCameraState } from './components/ModelViewer'
@@ -19,7 +20,7 @@ type PendingTransfer = { label: string; detail: string; action: () => void }
 const ModelViewer = lazy(() => import('./components/ModelViewer').then((module) => ({ default: module.ModelViewer })))
 const buildCommitDate = new Date(__BUILD_COMMIT_DATE__)
 
-const PART_FILES = [['assembly.step', 'assemblyFile'], ['base.stl', 'baseFile'], ['tray.stl', 'trayFile'], ['slider.stl', 'sliderFile'], ['lid.stl', 'lidFile'], ['dimensions.json', 'dimensionsFile']] as const
+const PART_FILES = [['assembly.step', 'assemblyFile'], ['base.stl', 'baseFile'], ['tray.stl', 'trayFile'], ['slider.stl', 'sliderFile'], ['lid.stl', 'lidFile'], ['funnel.stl', 'funnelFile'], ['dimensions.json', 'dimensionsFile']] as const
 
 export default function App() {
   const [language, setLanguage] = useState<Language>(loadLanguage)
@@ -29,7 +30,7 @@ export default function App() {
   const [state, setState] = useState<State>('ready')
   const [status, setStatus] = useState(() => text(language, 'initialStatus'))
   const [model, setModel] = useState<GeneratedModel | null>(null)
-  const [preview, setPreview] = useState<PreviewModel | null>(null)
+  const [preview, setPreview] = useState<ProgressivePreview | null>(null)
   const [previewState, setPreviewState] = useState<PreviewState>('idle')
   const [previewStatus, setPreviewStatus] = useState(() => text(language, 'loadingDefaultPreview'))
   const [realtimePreview, setRealtimePreview] = useState(loadRealtimePreview)
@@ -42,6 +43,7 @@ export default function App() {
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransfer | null>(null)
   const generation = useRef<AbortController | null>(null)
   const settingsFileInput = useRef<HTMLInputElement>(null)
+  const previewCache = useRef(new PreviewMeshCache())
   const previewGeneration = useRef<AbortController | null>(null)
   const printRequest = useRef(0)
   const [previewRetry, setPreviewRetry] = useState(0)
@@ -188,11 +190,21 @@ export default function App() {
         setPendingTransfer({ label: text(language, 'downloadCadEngine'), detail: text(language, 'cadEngineDetail'), action: () => { wasmApproved.current = true; setPreviewRetry((value) => value + 1) } })
         return
       }
+      const nextDimensions = deriveDimensions(settings)
+      const readyMeshes = previewCache.current.match(settings, nextDimensions)
+      setPreview({ dimensions: nextDimensions, partMeshes: { ...readyMeshes } })
       void generatePreviewModel(settings, {
+        onPart: ({ part, mesh, dimensions }) => {
+          if (controller.signal.aborted || previewGeneration.current !== controller) return
+          previewCache.current.remember(settings, dimensions, { [part]: mesh })
+          readyMeshes[part] = mesh
+          setPreview({ dimensions, partMeshes: { ...readyMeshes } })
+        },
         signal: controller.signal,
         onProgress: (progress) => setPreviewStatus(localizeProgress(language, progress.message) ?? text(language, 'generatingPreview')),
       }).then((generated) => {
         if (previewGeneration.current !== controller) return
+        previewCache.current.remember(settings, generated.dimensions, generated.partMeshes)
         setPreview(generated)
         setPreviewState('idle')
         setPreviewStatus(text(language, 'previewUpdated'))
@@ -220,7 +232,9 @@ export default function App() {
       }
       const partMeshes = await loadDefaultPreview()
       if (hasEditedSettings.current) return
-      setPreview({ dimensions: deriveDimensions(DEFAULT_SETTINGS), partMeshes })
+      const defaultDimensions = deriveDimensions(DEFAULT_SETTINGS)
+      previewCache.current.remember(DEFAULT_SETTINGS, defaultDimensions, partMeshes)
+      setPreview({ dimensions: defaultDimensions, partMeshes })
       setPreviewState('idle')
       setPreviewStatus(text(language, 'showingDefaultPreview'))
     } catch (error) {
@@ -246,12 +260,22 @@ export default function App() {
     setState('generating')
     setStatus(text(language, 'preparingCad'))
     try {
+      const nextDimensions = deriveDimensions(settings)
+      const readyMeshes = previewCache.current.match(settings, nextDimensions)
+      setPreview({ dimensions: nextDimensions, partMeshes: { ...readyMeshes } })
       const generated = await generateModel(settings, {
+        onPart: ({ part, mesh, dimensions }) => {
+          if (controller.signal.aborted || generation.current !== controller) return
+          previewCache.current.remember(settings, dimensions, { [part]: mesh })
+          readyMeshes[part] = mesh
+          setPreview({ dimensions, partMeshes: { ...readyMeshes } })
+        },
         signal: controller.signal,
         onProgress: (progress) => setStatus(localizeProgress(language, progress.message) ?? phaseLabel(language, progress.phase)),
       })
       if (generation.current !== controller) return null
       setModel(generated)
+      previewCache.current.remember(settings, generated.dimensions, generated.partMeshes)
       setPreview({ dimensions: generated.dimensions, partMeshes: generated.partMeshes })
       setState('complete')
       setStatus(text(language, 'modelGenerated'))
@@ -363,7 +387,9 @@ export default function App() {
           {isPrintPreview && printArtifact.plates.length > 1 && <div className="plate-tabs" role="group" aria-label={text(language, 'selectPrintPlate')}>{printArtifact.plates.map((plate, index) => <button key={index} type="button" aria-pressed={previewPlateIndex === index} className={previewPlateIndex === index ? 'selected' : ''} onClick={() => setPreviewPlateIndex(index)}>{text(language, 'plate')} {index + 1} <span>{plate.placements.length} {text(language, 'parts')}</span></button>)}</div>}
           {displayMeshes ? <Suspense fallback={<div className="preview-empty">{text(language, 'loading3d')}</div>}><ModelViewer language={language} meshes={displayMeshes} dimensions={isPrintPreview ? null : previewMode === '2d' ? dimensions : displayDimensions} mode={printPreviewPlate ? 'assembled' : previewMode} cameraState={printPreviewPlate ? printCamera : assemblyCamera} resetKey={previewViewReset} {...(printPreviewPlate ? { printPlateSize: { width: printPreviewPlate.width, depth: printPreviewPlate.depth } } : {})} /></Suspense> : <DimensionPreview dimensions={dimensions} language={language} />}
           {shownDimensions && <dl className="dimensions">
-            <div><dt>{text(language, 'overallSize')}</dt><dd>{fmt(language, shownDimensions.length)} × {fmt(language, shownDimensions.width)} × {fmt(language, shownDimensions.top)} mm</dd></div>
+            <div><dt>{text(language, 'overallSize')}</dt><dd>{fmt(language, shownDimensions.length + 19)} × {fmt(language, shownDimensions.width)} × {fmt(language, shownDimensions.top + 3.4 + shownDimensions.funnelDepth)} mm</dd></div>
+            <div><dt>{text(language, 'fieldTrayStyle')}</dt><dd>{text(language, shownDimensions.trayStyle === 'holes' ? 'trayHoles' : 'trayCutout')}</dd></div>
+            <div><dt>{text(language, 'funnelDepth')}</dt><dd>{fmt(language, shownDimensions.funnelDepth)} mm</dd></div>
             <div><dt>{text(language, 'pitch')}</dt><dd>{fmt(language, shownDimensions.pitch)} mm</dd></div>
             <div><dt>{text(language, 'capacity')}</dt><dd>{shownDimensions.screwXs.length * shownDimensions.screwYs.length} {text(language, 'pieces')}</dd></div>
           </dl>}

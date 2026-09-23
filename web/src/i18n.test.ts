@@ -23,8 +23,8 @@ describe('language preference', () => {
   })
 
   it('describes the relocated square outlet in both languages', () => {
-    expect(text('ja', 'fieldTrayHoleClearance')).toContain('ベース角穴')
-    expect(text('en', 'fieldTrayHoleClearance')).toContain('base-hole')
+    expect(text('ja', 'fieldTrayHoleClearance')).toContain('ベース・トレー角穴')
+    expect(text('en', 'fieldTrayHoleClearance')).toContain('Base / tray')
     expect(localizeValidation('ja', 'baseHoleClearance must be 0.1..1.2 mm')).toContain('ベース穴')
     expect(localizeValidation('en', 'baseHoleClearance must be 0.1..1.2 mm')).toContain('Base-hole')
   })
