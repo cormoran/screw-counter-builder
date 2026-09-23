@@ -55,7 +55,7 @@ export async function generateModel(input: SettingsInput = {}, options: Generate
     checks: result.verification.completed,
     pending_checks: result.verification.pending,
     physical_print_test: false,
-    print_orientation: "STLs seated on the build plane; lid exterior face down; funnel outlet down; review supports below embedded corner mounts",
+    print_orientation: "STLs seated on the build plane; lid exterior face down; funnel outlet down; magnet and peg corner mounts extend to the build plane",
     assembly_screws: settings.joint === "screws"
       ? "4 x M2x5; flat-underhead diameter <=4.2, height <=2.2; pilot 1.7; corner screws stop below magnet pockets"
       : "adhesive on mating lands, keep out of slide path",
