@@ -38,5 +38,5 @@ it('writes assembly-coordinate default preview meshes', async () => {
     rawBytes,
     gzipBytes,
   }, null, 2)}\n`)
-  expect(Object.keys(files)).toEqual(['base', 'tray', 'slider', 'lid'])
+  expect(Object.keys(files)).toEqual(['base', 'tray', 'slider', 'lid', 'funnel'])
 }, 120_000)

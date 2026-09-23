@@ -5,7 +5,7 @@ export type BambuPlateSize = { width: number; depth: number }
 export const DEFAULT_BAMBU_PLATE: BambuPlateSize = { width: 256, depth: 256 }
 /** @deprecated Use DEFAULT_BAMBU_PLATE, which supports rectangular plates. */
 export const BAMBU_PLATE_SIZE_MM = DEFAULT_BAMBU_PLATE.width
-export const PRINT_PARTS: readonly ModelPart[] = ['base', 'tray', 'slider', 'lid']
+export const PRINT_PARTS: readonly ModelPart[] = ['base', 'tray', 'slider', 'lid', 'funnel']
 
 export type PrintPartPlacement = { part: ModelPart; plate: number; x: number; y: number; width: number; depth: number }
 export type Print3mfPlate = { placements: readonly PrintPartPlacement[]; previewMeshes: Partial<Record<ModelPart, TriangleMesh>>; width: number; depth: number }
@@ -18,7 +18,7 @@ export type Print3mfArtifact = {
 type Bounds = { min: [number, number, number]; max: [number, number, number] }
 type PreparedPart = { part: ModelPart; mesh: TriangleMesh; bounds: Bounds }
 type LocalPlacement = Omit<PrintPartPlacement, 'plate'>
-const PART_NAMES: Record<ModelPart, string> = { base: 'Base', tray: 'Tray', slider: 'Slider', lid: 'Lid' }
+const PART_NAMES: Record<ModelPart, string> = { base: 'Base', tray: 'Tray', slider: 'Slider', lid: 'Lid', funnel: 'Funnel' }
 const PART_GAP_MM = 8
 // BambuStudio's PartPlate.cpp: LOGICAL_PART_PLATE_GAP = 1 / 5.
 const PLATE_GAP_RATIO = 0.2

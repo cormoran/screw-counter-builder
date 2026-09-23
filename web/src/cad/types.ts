@@ -14,6 +14,9 @@ export interface Settings {
   screw: ScrewSize;
   joint: JointType;
   lidAlignment: LidAlignment;
+  lidStyle: "full" | "cutout";
+  funnelAlignment: LidAlignment;
+  funnelOutlet: number;
   magnetDiameter: number;
   magnetThickness: number;
   magnetDiameterClearance: number;
@@ -83,6 +86,9 @@ export interface DerivedDimensions {
   deckTop: number;
   screwSpaceHeight: number;
   top: number;
+  funnelDepth: number;
+  funnelMountZ: number;
+  funnelMounts: Point2D[];
   detent?: DetentDimensions;
   joints: Point2D[];
   magnets: Point2D[];
@@ -90,12 +96,13 @@ export interface DerivedDimensions {
   magnetPocketDepth: number;
 }
 
-export type ModelPart = "base" | "tray" | "slider" | "lid";
+export type ModelPart = "base" | "tray" | "slider" | "lid" | "funnel";
 export type GeneratedFileName =
   | "base.stl"
   | "tray.stl"
   | "slider.stl"
   | "lid.stl"
+  | "funnel.stl"
   | "assembly.step"
   | "dimensions.json";
 

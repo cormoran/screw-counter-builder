@@ -19,7 +19,7 @@ type PendingTransfer = { label: string; detail: string; action: () => void }
 const ModelViewer = lazy(() => import('./components/ModelViewer').then((module) => ({ default: module.ModelViewer })))
 const buildCommitDate = new Date(__BUILD_COMMIT_DATE__)
 
-const PART_FILES = [['assembly.step', 'assemblyFile'], ['base.stl', 'baseFile'], ['tray.stl', 'trayFile'], ['slider.stl', 'sliderFile'], ['lid.stl', 'lidFile'], ['dimensions.json', 'dimensionsFile']] as const
+const PART_FILES = [['assembly.step', 'assemblyFile'], ['base.stl', 'baseFile'], ['tray.stl', 'trayFile'], ['slider.stl', 'sliderFile'], ['lid.stl', 'lidFile'], ['funnel.stl', 'funnelFile'], ['dimensions.json', 'dimensionsFile']] as const
 
 export default function App() {
   const [language, setLanguage] = useState<Language>(loadLanguage)
@@ -363,7 +363,8 @@ export default function App() {
           {isPrintPreview && printArtifact.plates.length > 1 && <div className="plate-tabs" role="group" aria-label={text(language, 'selectPrintPlate')}>{printArtifact.plates.map((plate, index) => <button key={index} type="button" aria-pressed={previewPlateIndex === index} className={previewPlateIndex === index ? 'selected' : ''} onClick={() => setPreviewPlateIndex(index)}>{text(language, 'plate')} {index + 1} <span>{plate.placements.length} {text(language, 'parts')}</span></button>)}</div>}
           {displayMeshes ? <Suspense fallback={<div className="preview-empty">{text(language, 'loading3d')}</div>}><ModelViewer language={language} meshes={displayMeshes} dimensions={isPrintPreview ? null : previewMode === '2d' ? dimensions : displayDimensions} mode={printPreviewPlate ? 'assembled' : previewMode} cameraState={printPreviewPlate ? printCamera : assemblyCamera} resetKey={previewViewReset} {...(printPreviewPlate ? { printPlateSize: { width: printPreviewPlate.width, depth: printPreviewPlate.depth } } : {})} /></Suspense> : <DimensionPreview dimensions={dimensions} language={language} />}
           {shownDimensions && <dl className="dimensions">
-            <div><dt>{text(language, 'overallSize')}</dt><dd>{fmt(language, shownDimensions.length)} × {fmt(language, shownDimensions.width)} × {fmt(language, shownDimensions.top)} mm</dd></div>
+            <div><dt>{text(language, 'overallSize')}</dt><dd>{fmt(language, shownDimensions.length + 19)} × {fmt(language, shownDimensions.width + 2 * shownDimensions.magnetPocketDiameter + 6)} × {fmt(language, shownDimensions.top + 3.4 + shownDimensions.funnelDepth + 3)} mm</dd></div>
+            <div><dt>{text(language, 'funnelDepth')}</dt><dd>{fmt(language, shownDimensions.funnelDepth + 3)} mm</dd></div>
             <div><dt>{text(language, 'pitch')}</dt><dd>{fmt(language, shownDimensions.pitch)} mm</dd></div>
             <div><dt>{text(language, 'capacity')}</dt><dd>{shownDimensions.screwXs.length * shownDimensions.screwYs.length} {text(language, 'pieces')}</dd></div>
           </dl>}

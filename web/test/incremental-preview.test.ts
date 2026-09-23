@@ -17,10 +17,10 @@ describe("incremental preview geometry", () => {
     }
 
     const magnet = await generatePreviewModel({ rows: 2, columns: 2, detentSpringLength: 12, magnetThickness: 2.5 });
-    for (const part of ["base", "slider"] as const) {
+    for (const part of ["slider"] as const) {
       expect(magnet.partMeshes[part]).toBe(spring.partMeshes[part]);
     }
-    for (const part of ["tray", "lid"] as const) {
+    for (const part of ["base", "tray", "lid", "funnel"] as const) {
       expect(magnet.partMeshes[part]).not.toBe(spring.partMeshes[part]);
     }
 

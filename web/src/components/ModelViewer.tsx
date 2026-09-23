@@ -51,10 +51,11 @@ type ViewerRuntime = {
   reset: () => void
 }
 
-const PARTS: readonly { id: ModelPart; label: 'base' | 'tray' | 'slider' | 'lid'; color: number; offset: [number, number, number] }[] = [
+const PARTS: readonly { id: ModelPart; label: ModelPart; color: number; offset: [number, number, number] }[] = [
   { id: 'base', label: 'base', color: 0x64748b, offset: [-8, -7, -4] },
   { id: 'tray', label: 'tray', color: 0x0f766e, offset: [8, 7, 5] },
   { id: 'slider', label: 'slider', color: 0xd97706, offset: [0, -11, 1] },
+  { id: 'funnel', label: 'funnel', color: 0x9333ea, offset: [0, 0, -23] },
   { id: 'lid', label: 'lid', color: 0x3b82f6, offset: [0, 0, 19] },
 ]
 
@@ -189,6 +190,7 @@ export function ModelViewer({ language, meshes, dimensions = null, mode, cameraS
           camera.zoom = prior.zoom
           camera.updateProjectionMatrix()
         } else {
+          sceneSize = size
           setDefaultCamera()
         }
         positioned = true

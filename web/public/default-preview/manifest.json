@@ -10,6 +10,9 @@
     "screw": "M2",
     "joint": "screws",
     "lidAlignment": "magnets",
+    "lidStyle": "full",
+    "funnelAlignment": "magnets",
+    "funnelOutlet": 16,
     "magnetDiameter": 6,
     "magnetThickness": 2,
     "magnetDiameterClearance": 0.3,
@@ -26,8 +29,9 @@
     "base": "base.mesh",
     "tray": "tray.mesh",
     "slider": "slider.mesh",
-    "lid": "lid.mesh"
+    "lid": "lid.mesh",
+    "funnel": "funnel.mesh"
   },
-  "rawBytes": 699936,
-  "gzipBytes": 164719
+  "rawBytes": 792348,
+  "gzipBytes": 185041
 }

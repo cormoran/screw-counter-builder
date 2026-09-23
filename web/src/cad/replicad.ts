@@ -1,6 +1,6 @@
 import initOpenCascade from "replicad-opencascadejs";
 import openCascadeWasm from "replicad-opencascadejs/wasm?url";
-import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, Sketcher, sketchCircle, sketchRoundedRectangle, topMost } from "replicad";
+import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, Sketcher, sketchCircle, sketchRectangle, sketchRoundedRectangle, topMost } from "replicad";
 import type { Shape3D } from "replicad";
 import type { DerivedDimensions, GenerateOptions, GeneratedFileName, PartDiagnostic, Settings, TriangleMesh, VerificationResult } from "./types";
 
@@ -42,17 +42,18 @@ const prismYZ = (points: Array<[number, number]>, x: number, length: number): Sh
 };
 
 type CachedCadPart = { key: string; shape: Shape3D; mesh: TriangleMesh; meshTolerance: number; diagnostic: PartDiagnostic; stl?: Blob };
-const partCache: Partial<Record<"base" | "tray" | "slider" | "lid", CachedCadPart>> = {};
+const partCache: Partial<Record<"base" | "tray" | "slider" | "lid" | "funnel", CachedCadPart>> = {};
 
 // Keep each key limited to the dimensions read while constructing that part.
 // A new geometry dependency must be added here when a part is edited.
 export function partKeys(settings: Settings, d: DerivedDimensions) {
   return {
     base: JSON.stringify([d.length, d.width, d.joinZ, d.wall, d.floor, d.pitch, settings.columns, d.screwXs, d.screwYs, d.drop, d.joints,
-      d.detent ? [d.detent.tipY, d.detent.notchX, d.detent.notchRadius] : null, settings.joint]),
+      d.detent ? [d.detent.tipY, d.detent.notchX, d.detent.notchRadius] : null, settings.joint, d.funnelMounts, d.funnelMountZ, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment]),
     tray: JSON.stringify([d.length, d.width, d.rim, d.joinZ, d.deckThickness, d.deckTop, d.top, d.sliderInsetY, d.joints, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.joint]),
+    funnel: JSON.stringify([d.length, d.width, d.funnelDepth, d.funnelMountZ, d.funnelMounts, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment, settings.funnelOutlet]),
     slider: JSON.stringify([d.width, d.sliderInsetY, d.sliderZ, d.length, d.sliderThickness, d.pitch, settings.columns, d.releaseX, d.window, d.slot, d.screwXs, d.screwYs, d.detent]),
-    lid: JSON.stringify([d.top, d.length, d.width, d.rim, d.deckTop, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.lidAlignment]),
+    lid: JSON.stringify([d.top, d.length, d.width, d.rim, d.deckTop, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.lidAlignment, settings.lidStyle]),
   };
 }
 
@@ -62,7 +63,7 @@ const printOrientation = (shape: Shape3D): Shape3D => {
 };
 
 /** Browser-specific OpenCascade B-Rep builder. */
-export async function buildWithReplicad(settings: Settings, d: DerivedDimensions, options: GenerateOptions, configuration: BuildConfiguration = {}): Promise<{ files: Partial<Record<GeneratedFileName, Blob>>; warnings: string[]; verification: VerificationResult; diagnostics: Record<"base" | "tray" | "slider" | "lid", PartDiagnostic>; partMeshes: Record<"base" | "tray" | "slider" | "lid", TriangleMesh> }> {
+export async function buildWithReplicad(settings: Settings, d: DerivedDimensions, options: GenerateOptions, configuration: BuildConfiguration = {}): Promise<{ files: Partial<Record<GeneratedFileName, Blob>>; warnings: string[]; verification: VerificationResult; diagnostics: Record<"base" | "tray" | "slider" | "lid" | "funnel", PartDiagnostic>; partMeshes: Record<"base" | "tray" | "slider" | "lid" | "funnel", TriangleMesh> }> {
   await ready();
   const aborted = () => { if (options.signal?.aborted) throw new DOMException("CAD generation was cancelled", "AbortError"); };
   aborted();
@@ -116,7 +117,16 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       d.joinZ - d.sliderZ + 0.2,
     ));
   }
-  options.onProgress?.({ phase: "building", completed: 1, total: 4, message: "Built base" });
+  if (!reusable("base")) {
+    for (const p of d.funnelMounts) {
+      base = base.fuse(cylinder(p.x, p.y, d.funnelMountZ, d.magnetPocketDiameter / 2 + 2, d.magnetPocketDepth + 0.5))
+        .cut(cylinder(p.x, p.y, d.funnelMountZ - 0.1, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
+      if (settings.funnelAlignment === "pegs") {
+        base = base.cut(cylinder(p.x, p.y, d.funnelMountZ + d.magnetPocketDepth * 0.4, d.magnetPocketDiameter / 2 + 0.3, d.magnetPocketDepth * 0.6));
+      }
+    }
+  }
+  options.onProgress?.({ phase: "building", completed: 1, total: 5, message: "Built base" });
   let tray = reusable("tray")?.shape;
   const frameWall = 2.4;
   const sliderGuideWidth = 2;
@@ -203,7 +213,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     }
     for (const p of d.magnets) tray = tray.cut(cylinder(p.x, p.y, d.top - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
   }
-  options.onProgress?.({ phase: "building", completed: 2, total: 4, message: "Built tray" });
+  options.onProgress?.({ phase: "building", completed: 2, total: 5, message: "Built tray" });
   const sw = d.width - 2 * d.sliderInsetY;
   let slider = reusable("slider")?.shape;
   if (!slider) {
@@ -225,7 +235,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       slider = slider.cut(rounded(10, edge - d.detent.springWidth - d.detent.reliefGap, d.sliderZ - 0.1, d.detent.springLength + 2, d.detent.reliefGap, d.sliderThickness + 0.2, 0.45)).cut(box(10, edge - d.detent.springWidth - d.detent.reliefGap + 0.4, d.sliderZ - 0.1, 0.8, d.detent.springWidth + d.detent.reliefGap + 2, d.sliderThickness + 0.2)).fuse(cylinder(d.detent.tipX, d.detent.tipY, d.sliderZ, d.detent.noseRadius, d.sliderThickness));
     }
   }
-  options.onProgress?.({ phase: "building", completed: 3, total: 4, message: "Built slider" });
+  options.onProgress?.({ phase: "building", completed: 3, total: 5, message: "Built slider" });
   const gussetRun = 4.2;
   const gussetPlugX = frameWall - 0.3;
   // The tray keeps the existing corner receptacles in both modes. Pegs use
@@ -234,14 +244,20 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const lidPegDepthClearance = 0.3;
   const lidPegRadius = (d.magnetPocketDiameter - lidPegDiameterClearance) / 2;
   const lidPegHeight = d.magnetPocketDepth - lidPegDepthClearance;
+  const lidMounts = settings.lidStyle === "cutout" ? d.magnets.filter((p) => p.x < d.length / 2) : d.magnets;
+  const lidStripWidth = d.rim + 0.5;
   let lid = reusable("lid")?.shape;
   if (!lid) {
-    lid = rounded(0, 0, d.top, d.length, d.width, 3.4, 4).fuse(rounded(d.length - 1, d.width / 2 - 7, d.top, 6, 14, 3.4, 2.5));
-    const lidPocketInset = d.rim + 2;
-    lid = lid.cut(rounded(lidPocketInset, lidPocketInset, d.top - 0.1, d.length - 2 * lidPocketInset, d.width - 2 * lidPocketInset, 2.1, 2));
-    const lip = rounded(d.rim + 0.35, d.rim + 0.35, d.top - 1.2, d.length - 2 * d.rim - 0.7, d.width - 2 * d.rim - 0.7, 1.3, 3.35)
-      .cut(rounded(d.rim + 1.75, d.rim + 1.75, d.top - 1.3, d.length - 2 * d.rim - 3.5, d.width - 2 * d.rim - 3.5, 1.5, 2));
-    lid = lid.fuse(lip).fillet(0.6, (finder, shape) => finder.when(topMost(shape)).parallelTo("XY"));
+    if (settings.lidStyle === "cutout") {
+      lid = rounded(0, 0, d.top, lidStripWidth, d.width, 3.4, 2);
+    } else {
+      lid = rounded(0, 0, d.top, d.length, d.width, 3.4, 4).fuse(rounded(d.length - 1, d.width / 2 - 7, d.top, 6, 14, 3.4, 2.5));
+      const lidPocketInset = d.rim + 2;
+      lid = lid.cut(rounded(lidPocketInset, lidPocketInset, d.top - 0.1, d.length - 2 * lidPocketInset, d.width - 2 * lidPocketInset, 2.1, 2));
+      const lip = rounded(d.rim + 0.35, d.rim + 0.35, d.top - 1.2, d.length - 2 * d.rim - 0.7, d.width - 2 * d.rim - 0.7, 1.3, 3.35)
+        .cut(rounded(d.rim + 1.75, d.rim + 1.75, d.top - 1.3, d.length - 2 * d.rim - 3.5, d.width - 2 * d.rim - 3.5, 1.5, 2));
+      lid = lid.fuse(lip).fillet(0.6, (finder, shape) => finder.when(topMost(shape)).parallelTo("XY"));
+    }
     // The plug keys into the tray's front rim cutout with 0.2 mm lateral
     // clearance. It reaches the deck so a closed lid cannot let screws escape.
     lid = lid.fuse(rounded(0.1, drainY + 0.1, d.deckTop, frameWall - 0.2, drainWidth - 0.2, d.top - d.deckTop + 0.1, 0.5));
@@ -266,25 +282,65 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       [gussetPlugX + gussetRun, d.top],
       [gussetPlugX, d.top - gussetRun],
     ], drainY + 0.1, drainWidth - 0.2));
-    for (const p of d.magnets) {
+    for (const p of lidMounts) {
       lid = settings.lidAlignment === "pegs"
         // Overlap the lid by 0.1 mm so the peg fuses into one printable solid.
         ? lid.fuse(cylinder(p.x, p.y, d.top - lidPegHeight, lidPegRadius, lidPegHeight + 0.1))
         : lid.cut(cylinder(p.x, p.y, d.top - 0.1, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
     }
   }
-  options.onProgress?.({ phase: "building", completed: 4, total: 4, message: "Built lid" });
+  options.onProgress?.({ phase: "building", completed: 4, total: 5, message: "Built lid" });
   aborted();
-  const parts = { base, tray, slider, lid };
+  let funnel = reusable("funnel")?.shape;
+  if (!funnel) {
+    const z = d.funnelMountZ;
+    const bottom = z - d.funnelDepth - 3;
+    const outlet = settings.funnelOutlet;
+    const section = (w: number, h: number, height: number) => sketchRectangle(w, h, { plane: "XY", origin: [d.length / 2, d.width / 2, height] });
+    // Matching rectangular lofts make four uninterrupted slopes to one outlet.
+    // The 3 mm collar keeps every base hole above the full-size mouth.
+    funnel = section(outlet + 4.8, outlet + 4.8, bottom).loftWith(section(d.length, d.width, z - 3), {})
+      .fuse(box(0, 0, z - 3.1, d.length, d.width, 3.1))
+      .cut(section(outlet, outlet, bottom).loftWith(section(d.length - 4.8, d.width - 4.8, z - 3), {}))
+      .cut(box(2.4, 2.4, z - 3.01, d.length - 4.8, d.width - 4.8, 3.2))
+      .cut(box((d.length - outlet) / 2, (d.width - outlet) / 2, bottom - 0.1, outlet, outlet, 0.2));
+    for (const p of d.funnelMounts) {
+      funnel = funnel.fuse(cylinder(p.x, p.y, z - d.magnetPocketDepth - 1.2, d.magnetPocketDiameter / 2 + 2, d.magnetPocketDepth + 1.2));
+      funnel = settings.funnelAlignment === "magnets"
+        ? funnel.cut(cylinder(p.x, p.y, z - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1))
+        : funnel.fuse(cylinder(p.x, p.y, z - 0.1, (d.magnetPocketDiameter - 0.3) / 2, d.magnetPocketDepth - 0.2)
+          .fuse(cone(p.x, p.y, z + d.magnetPocketDepth * 0.45, d.magnetPocketDiameter / 2 + 0.2, (d.magnetPocketDiameter - 0.3) / 2, d.magnetPocketDepth * 0.25))
+          .cut(box(p.x - 0.3, p.y - d.magnetPocketDiameter, z - 0.05, 0.6, d.magnetPocketDiameter * 2, d.magnetPocketDepth + 0.2)));
+    }
+  }
+  options.onProgress?.({ phase: "building", completed: 5, total: 5, message: "Built funnel" });
+  const parts = { base, tray, slider, lid, funnel };
   const completed: string[] = [];
   if (configuration.validate !== false) {
-  if (Object.values(parts).every((part) => !part.isNull && part.solids.length === 1)) completed.push("4 valid single solids");
+  if (Object.values(parts).every((part) => !part.isNull && part.solids.length === 1)) completed.push("5 valid single solids");
   else throw new Error("CAD build produced a null or multi-solid part");
   const names = Object.keys(parts) as Array<keyof typeof parts>;
   for (let i = 0; i < names.length; i += 1) for (let j = i + 1; j < names.length; j += 1) {
     if (intersectionVolume(parts[names[i]], parts[names[j]]) >= 1e-5) throw new Error(`Assembly interference: ${names[i]} / ${names[j]}`);
   }
   completed.push("No pairwise assembly interference at the closed position");
+  const outletProbe = box((d.length - settings.funnelOutlet) / 2 + 0.1, (d.width - settings.funnelOutlet) / 2 + 0.1,
+    d.funnelMountZ - d.funnelDepth - 3.1, settings.funnelOutlet - 0.2, settings.funnelOutlet - 0.2, d.funnelDepth + 3.2);
+  if (intersectionVolume(funnel, outletProbe) >= 1e-5) throw new Error("Funnel outlet must remain open throughout its depth");
+  for (const x of d.screwXs) for (const y of d.screwYs) {
+    if (intersectionVolume(funnel, cylinder(x, y, -2.5, d.head / 2, 2.6)) >= 1e-5) throw new Error("Funnel mouth blocks a base outlet");
+  }
+  for (const p of d.funnelMounts) {
+    if (settings.funnelAlignment === "magnets") {
+      for (const [part, z] of [[base, d.funnelMountZ], [funnel, d.funnelMountZ - d.magnetPocketDepth]] as const) {
+        if (intersectionVolume(part, cylinder(p.x, p.y, z, settings.magnetDiameter / 2, settings.magnetThickness)) >= 1e-5) throw new Error("Funnel magnet pocket is blocked");
+      }
+    } else {
+      // A shoulder catches the split peg after insertion; insertion flex is unmeasured.
+      if (intersectionVolume(base, funnel.clone().translate(0, 0, -d.magnetPocketDepth * 0.35)) < 0.001) throw new Error("Funnel snap pegs lack retaining shoulders");
+    }
+  }
+  completed.push("Funnel mouth, continuous outlet, and attachment clearances verified");
   // The pitch-repeating geometry lets us sample the two boundaries and the
   // first interior station. This is a fast check, not a full per-station proof.
   const stations = [...new Set([0, 1, settings.columns].filter((station) => station <= settings.columns))];
@@ -350,7 +406,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   }
   completed.push("Low-side pullout groove, rigid nose-length slider rib, and full release travel verified");
   if (settings.lidAlignment === "pegs") {
-    for (const peg of d.magnets) {
+    for (const peg of lidMounts) {
       const fittedPeg = cylinder(peg.x, peg.y, d.top - lidPegHeight, lidPegRadius, lidPegHeight);
       const pegVolume = Math.PI * lidPegRadius ** 2 * lidPegHeight;
       const radialClearanceProbe = cylinder(peg.x + lidPegRadius + lidPegDiameterClearance / 4, peg.y, d.top - lidPegHeight + 0.1, lidPegDiameterClearance / 8, Math.max(0.1, lidPegHeight - 0.2));
@@ -364,7 +420,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     }
     completed.push("Lid alignment pegs retain 0.3 mm radial and axial receptacle clearance");
   } else {
-    for (const magnet of d.magnets) {
+    for (const magnet of lidMounts) {
       const fittedMagnet = cylinder(magnet.x, magnet.y, d.top - d.magnetPocketDepth, settings.magnetDiameter / 2, settings.magnetThickness);
       if (intersectionVolume(tray, fittedMagnet) >= 1e-5 || intersectionVolume(lid, fittedMagnet.clone().translate(0, 0, d.magnetPocketDepth)) >= 1e-5) throw new Error("Magnet pocket does not clear its nominal magnet");
     }
@@ -390,16 +446,20 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     throw new Error("Thin frame or corner reinforcement is missing");
   }
   const lidCenterX = d.length / 2; const lidCenterY = d.width / 2;
-  if (intersectionVolume(lid, cylinder(lidCenterX, lidCenterY, d.top + 0.2, 0.25, 0.8)) >= 1e-5 ||
-      intersectionVolume(lid, cylinder(lidCenterX, lidCenterY, d.top + 2.25, 0.25, 0.7)) < 0.1) {
+  if (settings.lidStyle === "full" && (intersectionVolume(lid, cylinder(lidCenterX, lidCenterY, d.top + 0.2, 0.25, 0.8)) >= 1e-5 ||
+      intersectionVolume(lid, cylinder(lidCenterX, lidCenterY, d.top + 2.25, 0.25, 0.7)) < 0.1)) {
     throw new Error("Lid center pocket or roof is missing");
   }
-  completed.push("Thin frame, reinforced corners, and lid skin verified");
+  if (settings.lidStyle === "cutout") {
+    if (lidMounts.length !== 2 || lid.boundingBox.bounds[1][0] > lidStripWidth + 1e-5 ||
+        intersectionVolume(lid, cylinder(lidCenterX, lidCenterY, d.top, 0.3, 3.5)) >= 1e-5) throw new Error("Cutout lid must leave the top open and use only two mounts");
+  }
+  completed.push("Thin frame, reinforced corners, and selected lid coverage verified");
   const printedLid = printOrientation(lid.clone().rotate(180, [0, 0, 0], [1, 0, 0]));
   const [printedLidMin] = printedLid.boundingBox.bounds;
   if (Math.abs(printedLidMin[2]) > 1e-5) throw new Error("Lid print orientation is not seated on the build plane");
   if (settings.lidAlignment === "pegs") {
-    for (const peg of d.magnets) {
+    for (const peg of lidMounts) {
       const printedPegTip = cylinder(peg.x, d.width - peg.y, 3.4 + lidPegHeight - 0.08, lidPegRadius / 2, 0.05);
       if (intersectionVolume(printedLid, printedPegTip) < 0.001) throw new Error("Lid alignment peg is not upright in print orientation");
     }
@@ -512,7 +572,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     if (prior) return [name, prior.diagnostic];
     const [min, max] = part.boundingBox.bounds;
     return [name, { volume: measureShapeVolumeProperties(part).volume, bounds: { min, max } }];
-  })) as Record<"base" | "tray" | "slider" | "lid", PartDiagnostic>;
+  })) as Record<"base" | "tray" | "slider" | "lid" | "funnel", PartDiagnostic>;
   const meshTolerance = configuration.meshTolerance ?? 0.08;
   const partMeshes = Object.fromEntries(Object.entries(parts).map(([name, part]) => {
     const prior = reusable(name as keyof typeof keys);
@@ -523,7 +583,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       normals: Float32Array.from(mesh.normals),
       indices: Uint32Array.from(mesh.triangles),
     }];
-  })) as Record<"base" | "tray" | "slider" | "lid", TriangleMesh>;
+  })) as Record<"base" | "tray" | "slider" | "lid" | "funnel", TriangleMesh>;
   for (const name of Object.keys(parts) as Array<keyof typeof parts>) {
     const prior = partCache[name];
     partCache[name] = { key: keys[name], shape: parts[name], mesh: partMeshes[name], meshTolerance, diagnostic: diagnostics[name], stl: prior?.key === keys[name] ? prior.stl : undefined };
@@ -533,9 +593,10 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     return cached.stl ??= printOrientation(shape.clone()).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 });
   };
   const files: Partial<Record<GeneratedFileName, Blob>> = configuration.includeExports === false ? {} : {
+    "funnel.stl": partStl("funnel", funnel),
     "base.stl": partStl("base", base), "tray.stl": partStl("tray", tray),
     "slider.stl": partStl("slider", slider), "lid.stl": partCache.lid!.stl ??= printOrientation(lid.clone().rotate(180, [0, 0, 0], [1, 0, 0])).blobSTL({ binary: true, tolerance: 0.04, angularTolerance: 0.15 }),
-    "assembly.step": exportSTEP([{ shape: base, name: "base" }, { shape: tray, name: "tray" }, { shape: slider, name: "slider" }, { shape: lid, name: "lid" }]),
+    "assembly.step": exportSTEP([{ shape: base, name: "base" }, { shape: tray, name: "tray" }, { shape: slider, name: "slider" }, { shape: lid, name: "lid" }, { shape: funnel, name: "funnel" }]),
   };
-  return { files, warnings: [], verification: { completed, pending: ["Full per-station release and retention checks", "Physical print fit and detent force of the browser revision"] }, diagnostics, partMeshes };
+  return { files, warnings: [], verification: { completed, pending: ["Full per-station release and retention checks", "Physical print fit and detent force of the browser revision", "Funnel screw flow, bridging, snap insertion force, and magnet retention"] }, diagnostics, partMeshes };
 }

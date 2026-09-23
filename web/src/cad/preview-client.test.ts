@@ -21,8 +21,8 @@ class PreviewWorker {
   reply(message: Reply) { this.onmessage?.({ data: message } as MessageEvent) }
 }
 
-const parts = ['base', 'tray', 'slider', 'lid'] as const
-const keys = (slider = 'slider') => ({ base: 'base', tray: 'tray', slider, lid: 'lid' })
+const parts = ['base', 'tray', 'slider', 'lid', 'funnel'] as const
+const keys = (slider = 'slider') => ({ base: 'base', tray: 'tray', slider, lid: 'lid', funnel: 'funnel' })
 const mesh = (value: number): TriangleMesh => ({
   positions: new Float32Array([value]),
   normals: new Float32Array([value]),

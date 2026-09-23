@@ -3,7 +3,7 @@ import { assertValidSettings } from "./settings";
 import type { GenerateOptions, GeneratedFileName, GeneratedModel, PreviewModel, SettingsInput } from "./types";
 
 const EXPECTED_FILES: readonly GeneratedFileName[] = [
-  "base.stl", "tray.stl", "slider.stl", "lid.stl", "assembly.step", "dimensions.json",
+  "base.stl", "tray.stl", "slider.stl", "lid.stl", "funnel.stl", "assembly.step", "dimensions.json",
 ];
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -30,7 +30,7 @@ export async function generatePreviewModel(input: SettingsInput = {}, options: G
 }
 
 /**
- * Generate the four print parts and their assembled STEP representation.
+ * Generate the five print parts and their assembled STEP representation.
  *
  * The CAD kernel is lazy loaded so that opening the configuration page does not
  * download OpenCascade. `buildWithReplicad` owns all kernel-specific code.
@@ -43,7 +43,7 @@ export async function generateModel(input: SettingsInput = {}, options: Generate
   report?.({ phase: "initializing", message: "Loading the CAD engine…" });
   const { buildWithReplicad } = await import("./replicad");
   throwIfAborted(options.signal);
-  report?.({ phase: "building", completed: 0, total: 4, message: "Building parts…" });
+  report?.({ phase: "building", completed: 0, total: 5, message: "Building parts…" });
   const result = await buildWithReplicad(settings, dimensions, options);
   throwIfAborted(options.signal);
   report?.({ phase: "validating", message: "Preparing export metadata…" });
@@ -55,7 +55,7 @@ export async function generateModel(input: SettingsInput = {}, options: Generate
     checks: result.verification.completed,
     pending_checks: result.verification.pending,
     physical_print_test: false,
-    print_orientation: "STLs lie flat; lid exterior face down; no slicer supports intended",
+    print_orientation: "STLs seated on the build plane; lid exterior face down; funnel outlet down; review supports below funnel attachment ears",
     assembly_screws: settings.joint === "screws"
       ? "4 x M2x5; flat-underhead diameter <=4.2, height <=2.2; pilot 1.7; corner screws stop below magnet pockets"
       : "adhesive on mating lands, keep out of slide path",

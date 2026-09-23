@@ -33,6 +33,9 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   screw: "M2",
   joint: "screws",
   lidAlignment: "magnets",
+  lidStyle: "full",
+  funnelAlignment: "magnets",
+  funnelOutlet: 16,
   magnetDiameter: 6,
   magnetThickness: 2,
   magnetDiameterClearance: 0.3,
@@ -63,7 +66,10 @@ export function validateSettings(input: SettingsInput = {}): string[] {
     errors.push(`rows and columns must be positive integers within ${MAX_ROWS} × ${MAX_COLUMNS}`);
   }
   if (settings.joint !== "screws" && settings.joint !== "glue") errors.push("joint must be screws or glue");
+  if (!["full", "cutout"].includes(settings.lidStyle)) errors.push("lidStyle must be full or cutout");
   if (settings.lidAlignment !== "magnets" && settings.lidAlignment !== "pegs") errors.push("lidAlignment must be magnets or pegs");
+  if (!["magnets", "pegs"].includes(settings.funnelAlignment)) errors.push("funnelAlignment must be magnets or pegs");
+  if (!Number.isFinite(settings.funnelOutlet) || settings.funnelOutlet < 10 || settings.funnelOutlet > 24) errors.push("funnelOutlet must be 10..24 mm");
   if (settings.magnetDiameter < 3 || settings.magnetDiameter > 8) errors.push("Supported magnet diameter is 3..8 mm");
   if (settings.magnetThickness < 1 || settings.magnetThickness > 3) errors.push("Supported magnet thickness is 1..3 mm");
   if (settings.slideClearance < 0.15 || settings.slideClearance > 0.6) errors.push("slideClearance must be 0.15..0.6 mm");
@@ -92,6 +98,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   const resolved = resolveScrewDimensions(settings)!;
   const shaft = resolved.shaftDiameter;
   const head = resolved.headDiameter;
+  if (settings.funnelOutlet < head + 1) errors.push("Funnel outlet needs at least head + 1 mm");
   const slot = resolved.slotWidth;
   if (!(shaft > 0 && shaft + 0.3 <= slot && slot <= head - 0.6)) errors.push("Need shaft + 0.3 <= slot <= head - 0.6; measure the actual screw");
   const window = head + RELEASE_WINDOW_DIAMETER_CLEARANCE;
