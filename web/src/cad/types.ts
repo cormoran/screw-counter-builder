@@ -19,7 +19,7 @@ export interface Settings {
   magnetDiameterClearance: number;
   magnetDepthClearance: number;
   slideClearance: number;
-  /** Extra side length beyond a measured screw head in each square tray through-hole. */
+  /** Extra side length beyond a measured screw head in each square base outlet. */
   trayHoleClearance: number;
   /** Free vertical space above the tray deck, below the lid lip, in mm. */
   screwSpaceHeight: number;
