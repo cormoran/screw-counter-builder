@@ -283,12 +283,16 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
           .cut(cylinder(p.x, p.y, -1.2, 1.2, 1.3));
         continue;
       }
-      // Solid corner lands receive only the protruding magnets, not base bosses.
+      // Extend rectangular mounting lands to the print bed so their undersides
+      // do not hang over the funnel cavity. Preserve the rounded outer envelope.
       const land = p.y < d.width / 2 ? p.y : d.width - p.y;
       const span = land + d.magnetPocketDiameter / 2 + 1.2;
-      const cornerLand = rounded(p.x < d.length / 2 ? 0 : d.length - span, p.y < d.width / 2 ? 0 : d.width - span,
-        z - d.magnetPocketDepth - 1.2, span, span, -z + d.magnetPocketDepth + 1.2, 2)
-        .fillet(0.6, (finder) => finder.parallelTo("XY"));
+      const cornerLand = box(p.x < d.length / 2 ? 0 : d.length - span, p.y < d.width / 2 ? 0 : d.width - span,
+        bottom, span, span, d.funnelDepth)
+        // Wide outlets can overlap the blocks: a vertical cut keeps the outlet
+        // open without reintroducing an unsupported underside.
+        .cut(rounded(d.funnelOutletX - outlet / 2, (d.width - outlet) / 2, bottom - 0.1,
+          outlet, outlet, d.funnelDepth + 0.2, 2));
       funnel = funnel.fuse(cornerLand.intersect(envelope.clone()))
         .cut(cylinder(p.x, p.y, z, d.magnetPocketDiameter / 2, -z + 0.1));
       funnel = settings.funnelAlignment === "magnets"
