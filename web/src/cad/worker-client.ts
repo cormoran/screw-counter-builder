@@ -7,6 +7,9 @@ type WorkerReply =
   | { type: 'error'; id: number; message: string }
 
 type PendingRequest = {
+  request: { type: 'generate'; id: number; settings: ReturnType<typeof assertValidSettings> }
+  worker?: Worker
+  retries: number
   abort: () => void
   resolve: (model: GeneratedModel) => void
   reject: (reason: unknown) => void
@@ -47,10 +50,36 @@ function scheduleIdleTermination() {
 function failWorker(worker: Worker, message: string) {
   if (modelWorker !== worker) return
   modelWorker = undefined
+  if (idleTermination) clearTimeout(idleTermination)
+  idleTermination = undefined
   worker.terminate()
-  for (const [id, pending] of pendingRequests) {
-    removePendingRequest(id)
-    pending.reject(new Error(message))
+  // Every request assigned to this kernel must restart, including queued jobs.
+  // Each caller gets at most one retry; completed/aborted callers are absent.
+  for (const [id, pending] of [...pendingRequests]) {
+    if (pending.worker !== worker) continue
+    if (pending.retries >= 1) {
+      removePendingRequest(id)
+      pending.reject(new Error(message))
+    } else {
+      pending.retries++
+      sendRequest(id)
+    }
+  }
+}
+
+function sendRequest(id: number) {
+  const pending = pendingRequests.get(id)
+  if (!pending) return
+  try {
+    pending.worker = getModelWorker()
+    pending.worker.postMessage(pending.request)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (pending.worker && modelWorker === pending.worker) failWorker(pending.worker, message)
+    else {
+      removePendingRequest(id)
+      pending.reject(new Error(message))
+    }
   }
 }
 
@@ -62,32 +91,19 @@ function getModelWorker() {
   if (modelWorker) return modelWorker
 
   const worker = new Worker(new URL('./worker-entry.ts', import.meta.url), { type: 'module' })
-  // OpenCascade retains native allocations across jobs. Keep a short cache
-  // window, then release the whole WASM heap once all queued work has settled.
-  let completedJobs = 0
-  const retireIfIdle = () => {
-    if (completedJobs < 4 || pendingRequests.size > 0 || modelWorker !== worker) return
-    if (idleTermination) clearTimeout(idleTermination)
-    idleTermination = undefined
-    worker.terminate()
-    modelWorker = undefined
-  }
   worker.onmessage = (event: MessageEvent<WorkerReply>) => {
+    if (modelWorker !== worker) return
     const reply = event.data
-    if (reply.type !== 'progress') completedJobs = reply.type === 'error' ? Infinity : completedJobs + 1
+    if (reply.type === 'error') { failWorker(worker, reply.message); return }
     const pending = pendingRequests.get(reply.id)
-    if (!pending) { retireIfIdle(); return }
+    if (!pending || pending.worker !== worker) return
 
     if (reply.type === 'progress') {
       pending.onProgress?.(reply.progress)
     } else if (reply.type === 'complete') {
       removePendingRequest(reply.id)
       pending.resolve(reply.model)
-    } else {
-      removePendingRequest(reply.id)
-      pending.reject(new Error(reply.message))
     }
-    retireIfIdle()
   }
   worker.onerror = (event) => failWorker(worker, event.message || 'CAD worker failed')
   modelWorker = worker
@@ -106,18 +122,8 @@ export function generateModel(input: SettingsInput = {}, options: GenerateOption
       removePendingRequest(id)
       reject(abortError())
     }
-    pendingRequests.set(id, { abort, onProgress: options.onProgress, reject, resolve, signal: options.signal })
+    pendingRequests.set(id, { request: { type: 'generate', id, settings }, retries: 0, abort, onProgress: options.onProgress, reject, resolve, signal: options.signal })
     options.signal?.addEventListener('abort', abort, { once: true })
-    try {
-      getModelWorker().postMessage({ type: 'generate', id, settings })
-    } catch (error) {
-      const worker = modelWorker
-      const message = error instanceof Error ? error.message : String(error)
-      if (worker) failWorker(worker, message)
-      else {
-        removePendingRequest(id)
-        reject(new Error(message))
-      }
-    }
+    sendRequest(id)
   })
 }

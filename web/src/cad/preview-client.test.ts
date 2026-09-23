@@ -85,4 +85,24 @@ describe('preview worker client', () => {
     const nextRequest = worker.postMessage.mock.calls[2][0]
     expect(nextRequest.knownPartKeys).toEqual(keys())
   })
+
+  it('retains the accepted meshes when a failed request retries with a delta', async () => {
+    const { generatePreviewModel } = await import('./preview-client')
+    const first = generatePreviewModel()
+    const old = PreviewWorker.instances[0]
+    const initialMeshes = Object.fromEntries(parts.map((part, index) => [part, mesh(index)])) as Record<ModelPart, TriangleMesh>
+    old.reply({ type: 'complete', id: old.postMessage.mock.calls[0][0].id, model: { dimensions: {} }, partMeshes: initialMeshes, partKeys: keys() })
+    const initial = await first
+    const next = generatePreviewModel({ detentSpringLength: 12 })
+    const request = old.postMessage.mock.calls[1][0]
+    old.onerror?.({ message: 'memory access out of bounds' } as ErrorEvent)
+    const fresh = PreviewWorker.instances[1]
+    expect(fresh.postMessage.mock.calls[0][0]).toEqual(request)
+    const replacement = mesh(9)
+    fresh.reply({ type: 'complete', id: request.id, model: { dimensions: {} }, partMeshes: { slider: replacement }, partKeys: keys('slider-2') })
+    const updated = await next
+    expect(updated.partMeshes.slider).toBe(replacement)
+    for (const part of ['base', 'tray', 'lid', 'funnel'] as const) expect(updated.partMeshes[part]).toBe(initial.partMeshes[part])
+  })
+
 })

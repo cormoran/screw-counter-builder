@@ -9,6 +9,9 @@ type WorkerReply =
   | { type: 'error'; id: number; message: string }
 
 type PendingRequest = {
+  request: { type: 'generate'; id: number; settings: ReturnType<typeof assertValidSettings>; knownPartKeys?: PartKeys }
+  worker?: Worker
+  retries: number
   abort: () => void
   resolve: (model: PreviewModel) => void
   reject: (reason: unknown) => void
@@ -52,10 +55,36 @@ function scheduleIdleTermination() {
 function failWorker(worker: Worker, message: string) {
   if (previewWorker !== worker) return
   previewWorker = undefined
+  if (idleTermination) clearTimeout(idleTermination)
+  idleTermination = undefined
   worker.terminate()
-  for (const [id, pending] of pendingRequests) {
-    removePendingRequest(id)
-    pending.reject(new Error(message))
+  // Every request assigned to this kernel must restart, including queued jobs.
+  // Each caller gets at most one retry; completed/aborted callers are absent.
+  for (const [id, pending] of [...pendingRequests]) {
+    if (pending.worker !== worker) continue
+    if (pending.retries >= 1) {
+      removePendingRequest(id)
+      pending.reject(new Error(message))
+    } else {
+      pending.retries++
+      sendRequest(id)
+    }
+  }
+}
+
+function sendRequest(id: number) {
+  const pending = pendingRequests.get(id)
+  if (!pending) return
+  try {
+    pending.worker = getPreviewWorker()
+    pending.worker.postMessage(pending.request)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (pending.worker && previewWorker === pending.worker) failWorker(pending.worker, message)
+    else {
+      removePendingRequest(id)
+      pending.reject(new Error(message))
+    }
   }
 }
 
@@ -77,23 +106,14 @@ function getPreviewWorker() {
   if (previewWorker) return previewWorker
 
   const worker = new Worker(new URL('./preview-worker-entry.ts', import.meta.url), { type: 'module' })
-  // OpenCascade retains native allocations across jobs. Keep a short cache
-  // window, then release the whole WASM heap once all queued work has settled.
-  let completedJobs = 0
-  const retireIfIdle = () => {
-    if (completedJobs < 4 || pendingRequests.size > 0 || previewWorker !== worker) return
-    if (idleTermination) clearTimeout(idleTermination)
-    idleTermination = undefined
-    worker.terminate()
-    previewWorker = undefined
-  }
   worker.onmessage = (event: MessageEvent<WorkerReply>) => {
+    if (previewWorker !== worker) return
     const reply = event.data
-    if (reply.type !== 'progress') completedJobs = reply.type === 'error' ? Infinity : completedJobs + 1
+    if (reply.type === 'error') { failWorker(worker, reply.message); return }
     const pending = pendingRequests.get(reply.id)
     // An aborted or superseded caller can leave work in the persistent worker.
     // Do not let that work update a later request.
-    if (!pending) { retireIfIdle(); return }
+    if (!pending || pending.worker !== worker) return
 
     if (reply.type === 'progress') {
       pending.onProgress?.(reply.progress)
@@ -108,11 +128,7 @@ function getPreviewWorker() {
       } catch (error) {
         pending.reject(error)
       }
-    } else {
-      removePendingRequest(reply.id)
-      pending.reject(new Error(reply.message))
     }
-    retireIfIdle()
   }
   worker.onerror = (event) => failWorker(worker, event.message || 'CAD preview worker failed')
   previewWorker = worker
@@ -132,6 +148,8 @@ export function generatePreviewModel(input: SettingsInput = {}, options: Generat
       reject(abortError())
     }
     pendingRequests.set(id, {
+      request: { type: 'generate', id, settings, knownPartKeys: acceptedPreview?.partKeys },
+      retries: 0,
       abort,
       onProgress: options.onProgress,
       reject,
@@ -140,16 +158,6 @@ export function generatePreviewModel(input: SettingsInput = {}, options: Generat
       knownModel: acceptedPreview?.model,
     })
     options.signal?.addEventListener('abort', abort, { once: true })
-    try {
-      getPreviewWorker().postMessage({ type: 'generate', id, settings, knownPartKeys: acceptedPreview?.partKeys })
-    } catch (error) {
-      const worker = previewWorker
-      const message = error instanceof Error ? error.message : String(error)
-      if (worker) failWorker(worker, message)
-      else {
-        removePendingRequest(id)
-        reject(new Error(message))
-      }
-    }
+    sendRequest(id)
   })
 }
