@@ -23,7 +23,7 @@ describe("browser CAD dimensions", () => {
     expect(d.screwXs.at(-1)).toBe(94);
   });
 
-  it("adjusts the tray hole without changing the measured screw head", () => {
+  it("adjusts the base outlet without changing the measured screw head", () => {
     const d = deriveDimensions({ headDiameter: 4.5, trayHoleClearance: 0.4 });
     expect(d.head).toBe(4.5);
     expect(d.drop).toBeCloseTo(4.9);

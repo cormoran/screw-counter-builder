@@ -1,9 +1,8 @@
 import initOpenCascade from "replicad-opencascadejs";
 import openCascadeWasm from "replicad-opencascadejs/wasm?url";
-import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, Sketcher, sketchCircle, sketchRectangle, sketchRoundedRectangle, topMost } from "replicad";
+import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, Sketcher, sketchCircle, sketchRoundedRectangle, topMost } from "replicad";
 import type { Shape3D } from "replicad";
 import type { DerivedDimensions, GenerateOptions, GeneratedFileName, PartDiagnostic, Settings, TriangleMesh, VerificationResult } from "./types";
-import { TRAY_ENTRY_FLARE } from "./settings";
 
 export type BuildConfiguration = {
   /** Skip STL/STEP serialization for the low-latency editor preview. */
@@ -29,9 +28,6 @@ const sliderBodyWithSquareHandleEnd = (x: number, y: number, z: number, length: 
 const intersectionVolume = (left: Shape3D, right: Shape3D) => measureShapeVolumeProperties(left.intersect(right)).volume;
 const cone = (x: number, y: number, z: number, lowerRadius: number, upperRadius: number, height: number): Shape3D =>
   sketchCircle(lowerRadius, { plane: "XY", origin: [x, y, z] }).loftWith(sketchCircle(upperRadius, { plane: "XY", origin: [x, y, z + height] }), {});
-const squareFlare = (x: number, y: number, z: number, side: number, flare: number): Shape3D =>
-  sketchRectangle(side, side, { plane: "XY", origin: [x, y, z] })
-    .loftWith(sketchRectangle(side + 2 * flare, side + 2 * flare, { plane: "XY", origin: [x, y, z + flare] }), {});
 const gussetXZ = (points: Array<[number, number]>, y: number, width: number): Shape3D => {
   // XZ's positive normal points toward -Y. Start at the near edge and extrude
   // negatively so the prism occupies the requested positive-Y width.
@@ -52,9 +48,9 @@ const partCache: Partial<Record<"base" | "tray" | "slider" | "lid", CachedCadPar
 // A new geometry dependency must be added here when a part is edited.
 export function partKeys(settings: Settings, d: DerivedDimensions) {
   return {
-    base: JSON.stringify([d.length, d.width, d.joinZ, d.wall, d.floor, d.pitch, settings.columns, d.joints,
+    base: JSON.stringify([d.length, d.width, d.joinZ, d.wall, d.floor, d.pitch, settings.columns, d.screwXs, d.screwYs, d.drop, d.joints,
       d.detent ? [d.detent.tipY, d.detent.notchX, d.detent.notchRadius] : null, settings.joint]),
-    tray: JSON.stringify([d.length, d.width, d.joinZ, d.deckThickness, d.deckTop, d.top, d.sliderInsetY, d.screwXs, d.screwYs, d.drop, d.joints, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.joint]),
+    tray: JSON.stringify([d.length, d.width, d.rim, d.joinZ, d.deckThickness, d.deckTop, d.top, d.sliderInsetY, d.joints, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.joint]),
     slider: JSON.stringify([d.width, d.sliderInsetY, d.sliderZ, d.length, d.sliderThickness, d.pitch, settings.columns, d.releaseX, d.window, d.slot, d.screwXs, d.screwYs, d.detent]),
     lid: JSON.stringify([d.top, d.length, d.width, d.rim, d.deckTop, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.lidAlignment]),
   };
@@ -87,9 +83,14 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   };
   let base = reusable("base")?.shape;
   if (!base) {
+    // The full bottom plate keeps screw heads away from broad openings. Each
+    // head can leave only through its own straight square outlet after the
+    // slider's release window reaches that station.
     base = rounded(0, 0, 0, d.length, d.width, d.joinZ, 4)
-      .cut(box(7.7, d.wall, d.floor, d.length, d.width - 2 * d.wall, d.joinZ + 1))
-      .cut(box(7.7, d.wall + 3, -0.1, d.length, d.width - 2 * (d.wall + 3), d.joinZ + 1));
+      .cut(box(7.7, d.wall, d.floor, d.length, d.width - 2 * d.wall, d.joinZ + 1));
+    for (const x of d.screwXs) for (const y of d.screwYs) {
+      base = base.cut(box(x - d.drop / 2, y - d.drop / 2, -0.1, d.drop, d.drop, d.floor + 0.2));
+    }
     for (const p of d.joints) {
       // Keep 0.6 mm of material around the R1.2 through-hole at the narrow end.
       // The land narrows by 1.2 mm over its 1.2 mm height, so its exterior is a
@@ -118,6 +119,8 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   options.onProgress?.({ phase: "building", completed: 1, total: 4, message: "Built base" });
   let tray = reusable("tray")?.shape;
   const frameWall = 2.4;
+  const sliderGuideWidth = 2;
+  const trayOpeningCornerRadius = 2;
   // This ring shares the slider grip's XY opening. With the slider fully
   // inserted, a hook can pass through both openings while their separate Z
   // levels keep the moving slider clear of the tray.
@@ -148,6 +151,14 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const handleRibWidth = storageHandleWidth - 2;
   if (!tray) {
     tray = rounded(0, 0, d.joinZ, d.length, d.width, d.deckThickness, 4);
+    // Open only the screw-head area between two narrow ledges that keep the
+    // slider captive from above. The floor outside the slider stays solid.
+    const deckOpeningX = d.rim;
+    const deckOpeningLength = d.length - 2 * d.rim;
+    tray = tray.cut(rounded(
+      deckOpeningX, d.sliderInsetY + sliderGuideWidth, d.joinZ - 0.1,
+      deckOpeningLength, d.width - 2 * (d.sliderInsetY + sliderGuideWidth), d.deckThickness + 0.2, trayOpeningCornerRadius,
+    ));
     let rim = rounded(0, 0, d.deckTop, d.length, d.width, d.top - d.deckTop, 4)
       .cut(rounded(frameWall, frameWall, d.deckTop - 0.1, d.length - 2 * frameWall, d.width - 2 * frameWall, d.top - d.deckTop + 0.2, 1.6));
     // One reinforced corner carries each magnet above its assembly screw.
@@ -178,10 +189,6 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       [handleRibRootX, handleRibBaseZ + handleRibRun],
       [handleRibRootX + handleRibRun, handleRibBaseZ],
     ], handleRibY, handleRibWidth));
-    for (const x of d.screwXs) for (const y of d.screwYs) {
-      tray = tray.cut(box(x - d.drop / 2, y - d.drop / 2, d.joinZ - 0.1, d.drop, d.drop, d.deckThickness + 0.2));
-      tray = tray.cut(squareFlare(x, y, d.deckTop - TRAY_ENTRY_FLARE, d.drop, TRAY_ENTRY_FLARE));
-    }
     for (const p of d.joints) {
       // Start 0.2 mm wider than the tapered base land at the mating plane. The
       // 45-degree socket reaches the R0.85 pilot continuously, leaving no flat
@@ -302,12 +309,26 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   }
   completed.push("Release, retention, and shaft clearance checked at representative stations");
   const firstHoleX = d.screwXs[0]; const firstHoleY = d.screwYs[0];
-  const squareCorner = cylinder(firstHoleX + d.drop / 2 - 0.15, firstHoleY + d.drop / 2 - 0.15, d.joinZ + 0.1, 0.05, 0.2);
-  const squareWall = cylinder(firstHoleX + d.drop / 2 + 0.15, firstHoleY, d.joinZ + 0.1, 0.05, 0.2);
-  if (intersectionVolume(tray, squareCorner) >= 1e-5 || intersectionVolume(tray, squareWall) < 0.001) {
-    throw new Error("Tray drop hole must have a square straight opening");
+  const squareCorner = cylinder(firstHoleX + d.drop / 2 - 0.15, firstHoleY + d.drop / 2 - 0.15, 0.2, 0.05, 0.2);
+  const squareWall = cylinder(firstHoleX + d.drop / 2 + 0.15, firstHoleY, 0.2, 0.05, 0.2);
+  if (intersectionVolume(base, squareCorner) >= 1e-5 || intersectionVolume(base, squareWall) < 0.001) {
+    throw new Error("Base outlet must have a square straight opening");
   }
-  completed.push("Tray drop holes retain square straight openings");
+  const trayOpening = cylinder(firstHoleX, firstHoleY, d.joinZ, d.head / 2, d.deckThickness);
+  const lowGuide = cylinder(d.length / 2, d.sliderInsetY + sliderGuideWidth / 2, d.joinZ, 0.2, d.deckThickness);
+  const highGuide = cylinder(d.length / 2, d.width - d.sliderInsetY - sliderGuideWidth / 2, d.joinZ, 0.2, d.deckThickness);
+  const lowOuterFloor = cylinder(d.length / 2, (frameWall + d.sliderInsetY) / 2, d.joinZ, 0.2, d.deckThickness);
+  const highOuterFloor = cylinder(d.length / 2, d.width - (frameWall + d.sliderInsetY) / 2, d.joinZ, 0.2, d.deckThickness);
+  const trayOpeningY = d.sliderInsetY + sliderGuideWidth;
+  const roundedCornerMaterial = cylinder(d.rim + 0.3, trayOpeningY + 0.3, d.joinZ, 0.1, d.deckThickness);
+  const roundedCornerOpening = cylinder(d.rim + trayOpeningCornerRadius, trayOpeningY + trayOpeningCornerRadius, d.joinZ, 0.1, d.deckThickness);
+  if (intersectionVolume(tray, trayOpening) >= 1e-5 ||
+      intersectionVolume(tray, lowGuide) < 0.01 || intersectionVolume(tray, highGuide) < 0.01 ||
+      intersectionVolume(tray, lowOuterFloor) < 0.01 || intersectionVolume(tray, highOuterFloor) < 0.01 ||
+      intersectionVolume(tray, roundedCornerMaterial) < 0.001 || intersectionVolume(tray, roundedCornerOpening) >= 1e-5) {
+    throw new Error("Tray floor must retain rounded opening corners, both slider guides, and solid outer panels");
+  }
+  completed.push("Full base floor, square outlets, and rounded tray opening with slider guides and solid outer panels verified");
   const fullReleaseTravel = settings.columns * d.pitch;
   // Exclude the click tip here so the opposite-side rigid rib must catch.
   const sliderWithoutClickTip = d.detent

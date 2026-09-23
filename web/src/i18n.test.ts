@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { detectLanguage, loadLanguage, saveLanguage, text } from './i18n'
+import { detectLanguage, loadLanguage, localizeValidation, saveLanguage, text } from './i18n'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -20,5 +20,12 @@ describe('language preference', () => {
   it('localizes the preview reset control', () => {
     expect(text('ja', 'resetPreviewDisplay')).toBe('表示をリセット')
     expect(text('en', 'resetPreviewDisplay')).toBe('Reset view')
+  })
+
+  it('describes the relocated square outlet in both languages', () => {
+    expect(text('ja', 'fieldTrayHoleClearance')).toContain('ベース角穴')
+    expect(text('en', 'fieldTrayHoleClearance')).toContain('base-hole')
+    expect(localizeValidation('ja', 'baseHoleClearance must be 0.1..1.2 mm')).toContain('ベース穴')
+    expect(localizeValidation('en', 'baseHoleClearance must be 0.1..1.2 mm')).toContain('Base-hole')
   })
 })

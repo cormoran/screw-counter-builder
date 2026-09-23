@@ -6,10 +6,8 @@ export const SCREW_PRESETS: Readonly<Record<string, ScrewPreset>> = {
   M3: { shaft: 3, head: 6, slot: 3.6, pitch: 10 },
 };
 
-/** Side-length clearance at the straight square through-hole, tuned from print feedback. */
-export const TRAY_HOLE_SIDE_CLEARANCE = 0.3;
-/** A 45-degree, 0.3 mm chamfer around the top of each square tray hole. */
-export const TRAY_ENTRY_FLARE = 0.3;
+/** Side-length clearance at the straight square base outlet, tuned from print feedback. */
+export const BASE_HOLE_SIDE_CLEARANCE = 0.3;
 export const RELEASE_WINDOW_DIAMETER_CLEARANCE = 1.0;
 
 export function resolveScrewDimensions(settings: Settings): { headDiameter: number; shaftDiameter: number; slotWidth: number; pitch: number } | null {
@@ -40,7 +38,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   magnetDiameterClearance: 0.3,
   magnetDepthClearance: 0.15,
   slideClearance: 0.2,
-  trayHoleClearance: TRAY_HOLE_SIDE_CLEARANCE,
+  trayHoleClearance: BASE_HOLE_SIDE_CLEARANCE,
   screwSpaceHeight: 15,
   headDiameter: null,
   shaftDiameter: null,
@@ -69,7 +67,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   if (settings.magnetDiameter < 3 || settings.magnetDiameter > 8) errors.push("Supported magnet diameter is 3..8 mm");
   if (settings.magnetThickness < 1 || settings.magnetThickness > 3) errors.push("Supported magnet thickness is 1..3 mm");
   if (settings.slideClearance < 0.15 || settings.slideClearance > 0.6) errors.push("slideClearance must be 0.15..0.6 mm");
-  if (settings.trayHoleClearance < 0.1 || settings.trayHoleClearance > 1.2) errors.push("trayHoleClearance must be 0.1..1.2 mm");
+  if (settings.trayHoleClearance < 0.1 || settings.trayHoleClearance > 1.2) errors.push("baseHoleClearance must be 0.1..1.2 mm");
   if (settings.screwSpaceHeight < 3.5 || settings.screwSpaceHeight > 30) errors.push("screwSpaceHeight must be 3.5..30 mm");
   if (settings.magnetDiameterClearance < 0 || settings.magnetDiameterClearance > 0.6 || settings.magnetDepthClearance < 0 || settings.magnetDepthClearance > 0.3) {
     errors.push("Magnet clearance is outside the supported range");
