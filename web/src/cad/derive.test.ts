@@ -12,6 +12,19 @@ describe("browser CAD dimensions", () => {
     expect(validateSettings({ trayStyle: "unknown" as "auto" })).not.toEqual([]);
   });
 
+  it("keeps screw-length drop clearance and validates manual funnel heights", () => {
+    for (const screwLength of [1, 5, 20, 100]) {
+      const automatic = deriveDimensions({ screwLength });
+      expect(automatic.funnelSlopeZ).toBe(-screwLength - 3);
+      expect(automatic.funnelDepth + automatic.funnelSlopeZ).toBe(11);
+      expect(validateSettings({ screwLength, funnelHeight: screwLength + 8 })).toEqual([]);
+      expect(validateSettings({ screwLength, funnelHeight: screwLength + 7.9 })).not.toEqual([]);
+    }
+    for (const funnelHeight of [NaN, Infinity, 161]) expect(validateSettings({ funnelHeight })).not.toEqual([]);
+    expect(validateSettings({ funnelAlignment: "screws" })).toEqual([]);
+    expect(validateSettings({ funnelAlignment: "screws", joint: "glue" })).not.toEqual([]);
+  });
+
   it("defaults the outlet to 10 mm and accepts 5 mm while retaining head clearance", () => {
     expect(DEFAULT_SETTINGS.funnelOutlet).toBe(10);
     for (const funnelOutlet of [5, 10, 24]) expect(validateSettings({ funnelOutlet })).toEqual([]);
@@ -33,10 +46,11 @@ describe("browser CAD dimensions", () => {
   it("keeps the funnel low, fixes it at screw corners, and offsets the outlet away from the tab", () => {
     for (const columns of [1, 10, 24]) {
       const d = deriveDimensions({ columns });
-      expect(d.funnelDepth).toBe(14);
+      expect(d.funnelDepth).toBe(19);
+      expect(d.funnelSlopeZ).toBe(-8);
       expect(d.funnelMounts).toEqual(d.joints);
-      expect(d.funnelMountZ).toBeCloseTo(-0.65);
-      expect(d.baseScrewHeadSeat).toBeCloseTo(3.8);
+      expect(d.funnelMountZ).toBeCloseTo(-1.25);
+      expect(d.baseScrewHeadSeat).toBeCloseTo(3.2);
       expect(d.funnelOutletX).toBeLessThan(d.length / 2);
       expect(d.funnelOutletX - DEFAULT_SETTINGS.funnelOutlet / 2).toBeGreaterThan(2.4);
     }

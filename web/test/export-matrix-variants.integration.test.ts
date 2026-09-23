@@ -12,9 +12,9 @@ vi.mock("replicad-opencascadejs/wasm?url", () => ({
 // Each file owns a finite WASM heap, matching the disposable export worker.
 describe("CAD export matrix", () => {
   it.each([
-    { rows: 4, columns: 10, screw: "M2" as const, joint: "screws" as const },
-    { rows: 3, columns: 3, screw: "M1.5" as const, joint: "glue" as const },
-    { rows: 6, columns: 3, screw: "M3" as const, joint: "screws" as const },
-    { rows: 1, columns: 1, screw: "M2" as const, joint: "screws" as const },
+    { rows: 4, columns: 2, screw: "M2" as const, joint: "screws" as const, screwSpaceHeight: 10 },
+    { rows: 1, columns: 1, screw: "M3" as const, joint: "glue" as const, lidAlignment: "pegs" as const, screwSpaceHeight: 3.5 },
+    { rows: 1, columns: 1, screw: "M2" as const, joint: "glue" as const, detent: false, slideClearance: 0.6 },
+    { rows: 1, columns: 1, screw: "M2" as const, joint: "screws" as const, detentDiameter: 3.2, detentSpringLength: 6 },
   ])("generates the $screw $rows x $columns $joint validation case", verifyExport, 120_000);
 });

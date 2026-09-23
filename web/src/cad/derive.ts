@@ -38,7 +38,9 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
     shaft, head, slot, drop, window, pitch, rim, wall, sliderInsetY, releaseX,
     screwXs, screwYs, length, width, floor, sliderZ, sliderThickness, joinZ, deckThickness, deckTop, screwSpaceHeight: c.screwSpaceHeight, top,
     joints, magnets,
-    funnelDepth: 14,
+    funnelDepth: c.funnelHeight ?? c.screwLength + 14,
+    funnelSlopeZ: -(c.screwLength + 3),
+    registration: [length / 3, length * 2 / 3].flatMap((x) => [1.5, width - 1.5].map((y) => ({ x, y }))),
     // Only the magnet projects below the flat base; the funnel receives it.
     funnelMountZ: c.funnelAlignment === "magnets" ? funnelBasePocketDepth(c) - c.magnetThickness - c.magnetDepthClearance : 0,
     funnelBasePocketDepth: funnelBasePocketDepth(c),

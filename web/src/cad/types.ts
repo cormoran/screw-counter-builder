@@ -18,7 +18,9 @@ export interface Settings {
   joint: JointType;
   lidAlignment: LidAlignment;
   lidStyle: "full" | "cutout";
-  funnelAlignment: LidAlignment;
+  funnelAlignment: LidAlignment | "screws";
+  /** Total funnel height; null preserves 11 mm of slope below the free-fall space. */
+  funnelHeight: number | null;
   funnelOutlet: number;
   magnetDiameter: number;
   magnetThickness: number;
@@ -91,6 +93,8 @@ export interface DerivedDimensions {
   screwSpaceHeight: number;
   top: number;
   funnelDepth: number;
+  funnelSlopeZ: number;
+  registration: Point2D[];
   funnelOutletX: number;
   funnelMountZ: number;
   funnelBasePocketDepth: number;
