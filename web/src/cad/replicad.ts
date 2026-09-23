@@ -190,8 +190,8 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     tray = rounded(0, 0, d.joinZ, d.length, d.width, d.deckThickness, 4);
     // Open only the screw-head area between two narrow ledges that keep the
     // slider captive from above. The floor outside the slider stays solid.
-    const deckOpeningX = d.rim;
-    const deckOpeningLength = d.length - 2 * d.rim;
+    const deckOpeningX = d.trayOpeningX;
+    const deckOpeningLength = d.trayOpeningLength;
     if (d.trayStyle === "cutout") {
       tray = tray.cut(rounded(
         deckOpeningX, d.sliderInsetY + sliderGuideWidth, d.joinZ - 0.1,
@@ -484,14 +484,21 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const lowOuterFloor = cylinder(d.length / 2, (frameWall + d.sliderInsetY) / 2, d.joinZ, 0.2, d.deckThickness);
   const highOuterFloor = cylinder(d.length / 2, d.width - (frameWall + d.sliderInsetY) / 2, d.joinZ, 0.2, d.deckThickness);
   const trayOpeningY = d.sliderInsetY + sliderGuideWidth;
-  const roundedCornerMaterial = cylinder(d.rim + 0.3, trayOpeningY + 0.3, d.joinZ, 0.1, d.deckThickness);
-  const roundedCornerOpening = cylinder(d.rim + trayOpeningCornerRadius, trayOpeningY + trayOpeningCornerRadius, d.joinZ, 0.1, d.deckThickness);
+  const roundedCornerMaterial = cylinder(d.trayOpeningX + 0.3, trayOpeningY + 0.3, d.joinZ, 0.1, d.deckThickness);
+  const roundedCornerOpening = cylinder(d.trayOpeningX + trayOpeningCornerRadius, trayOpeningY + trayOpeningCornerRadius, d.joinZ, 0.1, d.deckThickness);
   if (intersectionVolume(tray, trayOpening) >= 1e-5 ||
       intersectionVolume(tray, lowGuide) < 0.01 || intersectionVolume(tray, highGuide) < 0.01 ||
       intersectionVolume(tray, lowOuterFloor) < 0.01 || intersectionVolume(tray, highOuterFloor) < 0.01) {
     throw new Error("Tray floor must retain rounded opening corners, both slider guides, and solid outer panels");
   }
   if (d.trayStyle === "cutout") {
+    for (const y of d.screwYs) {
+      const releaseCover = box(d.releaseX - d.window / 2, y - d.window / 2, d.joinZ, d.window, d.window, d.deckThickness);
+      try {
+        if (Math.abs(intersectionVolume(tray, releaseCover) - d.window ** 2 * d.deckThickness) > 1e-5) throw new Error("Tray must cover the slider release windows");
+      } finally { releaseCover.delete(); }
+    }
+    completed.push("Tray deck fully covers the slider release windows");
     if (intersectionVolume(tray, roundedCornerMaterial) < 0.001 || intersectionVolume(tray, roundedCornerOpening) >= 1e-5) throw new Error("Tray cutout must retain rounded corners");
     completed.push("Full base floor, square outlets, and rounded tray opening with slider guides and solid outer panels verified");
   } else {

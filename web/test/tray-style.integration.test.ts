@@ -18,6 +18,7 @@ describe("tray style CAD integration", () => {
     const cutout = await generateModel({ ...settings, screwLength: 5.1 });
     expect(holes.dimensions.trayStyle).toBe("holes");
     expect(cutout.dimensions.trayStyle).toBe("cutout");
+    expect(cutout.verification.completed).toContain("Tray deck fully covers the slider release windows");
     expect(holes.diagnostics.tray.volume).toBeGreaterThan(cutout.diagnostics.tray.volume);
     expect(holes.files["tray.stl"]).not.toBe(cutout.files["tray.stl"]);
     for (const part of ["base", "slider", "lid"] as const) expect(holes.files[`${part}.stl`]).toBe(cutout.files[`${part}.stl`]);
@@ -31,4 +32,8 @@ describe("tray style CAD integration", () => {
     expect(metadata.derived.trayStyle).toBe("holes");
   }, 120_000);
 
+  it("covers oversized release windows on a one-cell tray", async () => {
+    const model = await generateModel({ rows: 1, columns: 1, trayStyle: "cutout", headDiameter: 8 });
+    expect(model.verification.completed).toContain("Tray deck fully covers the slider release windows");
+  }, 120_000);
 });
