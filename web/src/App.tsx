@@ -8,6 +8,7 @@ import { SettingsForm } from './components/SettingsForm'
 import { differsFromDefaults, loadRealtimePreview, loadSettings, loadViewMode, saveRealtimePreview, saveSettings, saveViewMode } from './settings-session'
 import { PRINT_PLATE_OPTIONS, getSettingsCategories, getSettingsFields, type PrintPlateOption } from './settings-schema'
 import { currentConnectionNeedsConfirmation } from './network'
+import { createSettingsFile, parseSettingsFile } from './settings-transfer'
 import { LANGUAGE_OPTIONS, formatNumber, loadLanguage, localizeProgress, localizeValidation, saveLanguage, text, type Language } from './i18n'
 import './styles/preview.css'
 
@@ -40,6 +41,7 @@ export default function App() {
   const [printStatus, setPrintStatus] = useState('')
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransfer | null>(null)
   const generation = useRef<AbortController | null>(null)
+  const settingsFileInput = useRef<HTMLInputElement>(null)
   const previewGeneration = useRef<AbortController | null>(null)
   const printRequest = useRef(0)
   const [previewRetry, setPreviewRetry] = useState(0)
@@ -116,6 +118,35 @@ export default function App() {
     setStatus(text(language, 'settingsReset'))
     setPendingTransfer(null)
     void loadInitialPreview()
+  }
+
+  async function importSettingsFile(file: File | undefined) {
+    if (!file) return
+    try {
+      const imported = parseSettingsFile(await file.text())
+      saveSettings(imported)
+      hasEditedSettings.current = differsFromDefaults(imported)
+      generation.current?.abort()
+      previewGeneration.current?.abort()
+      printRequest.current += 1
+      setSettings(imported)
+      setModel(null)
+      setPreview(null)
+      setPreviewState('idle')
+      setPreviewStatus(text(language, 'loadingDefaultPreview'))
+      setPrintArtifact(null)
+      setShowPrintPreview(false)
+      setPreviewPlateIndex(0)
+      setPrintState('ready')
+      setPrintStatus('')
+      setState('ready')
+      setStatus(text(language, 'settingsImported'))
+      if (realtimePreview && previewMode !== '2d') setPreviewState('generating')
+    } catch {
+      setStatus(text(language, 'settingsImportFailed'))
+    } finally {
+      if (settingsFileInput.current) settingsFileInput.current.value = ''
+    }
   }
 
   function resetPreviewDisplay() {
@@ -302,7 +333,7 @@ export default function App() {
     </header>
     <div className="tool-layout">
       <section className="panel form-panel" aria-labelledby="settings-title">
-        <div className="section-heading settings-heading"><div><h2 id="settings-title">{text(language, 'settings')}</h2><span>{text(language, 'basic')}</span></div><button className="reset-button" type="button" disabled={!differsFromDefaults(settings)} onClick={resetSettings}>{text(language, 'resetSettings')}</button></div>
+        <div className="section-heading settings-heading"><div><h2 id="settings-title">{text(language, 'settings')}</h2><span>{text(language, 'basic')}</span></div><div className="settings-actions"><button className="reset-button" type="button" onClick={() => settingsFileInput.current?.click()}>{text(language, 'importSettings')}</button><input ref={settingsFileInput} type="file" accept=".json,application/json" hidden onChange={(event) => void importSettingsFile(event.currentTarget.files?.[0])} /><button className="reset-button" type="button" disabled={!differsFromDefaults(settings)} onClick={resetSettings}>{text(language, 'resetSettings')}</button></div></div>
         {displayMeshes && !isPrintPreview && previewMode !== '2d' && <div className="settings-mini-preview"><DimensionPreview dimensions={displayDimensions} language={language} compact /></div>}
         <SettingsForm fields={settingsFields.filter((field) => field.category === 'basic')} settings={settings} onChange={update} />
         <button className="details-button" type="button" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}>
@@ -371,10 +402,12 @@ function DownloadArea({ language, model, settings }: { language: Language; model
   async function downloadAll() {
     const zip = new JSZip()
     Object.entries(model.files).forEach(([name, file]) => zip.file(`${prefix}_${name}`, file))
+    zip.file(`${prefix}_settings.json`, createSettingsFile(settings))
     download(await zip.generateAsync({ type: 'blob' }), `${prefix}.zip`)
   }
   return <div className="downloads" aria-label={text(language, 'downloadFiles')}>
     <button type="button" className="zip-button" onClick={() => void downloadAll()}>{text(language, 'downloadZip')}</button>
+    <button type="button" className="settings-download" onClick={() => download(createSettingsFile(settings), `${prefix}_settings.json`)}>{text(language, 'downloadSettings')}</button>
     <div className="file-list">{PART_FILES.map(([file, label]) => model.files[file] && <button type="button" key={file} onClick={() => download(model.files[file], `${prefix}_${file}`)}>{text(language, label)}<span>↓</span></button>)}</div>
     {visibleWarnings.length > 0 && <div className="warnings"><strong>{text(language, 'notes')}</strong><ul>{visibleWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
   </div>
