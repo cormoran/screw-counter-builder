@@ -29,7 +29,8 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
   const deckTop = joinZ + deckThickness;
   // The lid lip projects 1.2 mm below the mating plane.
   const top = deckTop + c.screwSpaceHeight + 1.2;
-  const magnetCenter = rim / 2 + 0.5;
+  // Move all coaxial mounts outward while retaining pocket and corner-pad walls.
+  const magnetCenter = Math.max(4.5, (c.magnetDiameter + c.magnetDiameterClearance) / 2 + 1.35);
   const magnets = [magnetCenter, length - magnetCenter].flatMap((x) => [magnetCenter, width - magnetCenter].map((y) => ({ x, y })));
   const joints = magnets.map(({ x, y }) => ({ x, y }));
   const result: DerivedDimensions = {

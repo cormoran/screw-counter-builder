@@ -1,6 +1,6 @@
 import initOpenCascade from "replicad-opencascadejs";
 import openCascadeWasm from "replicad-opencascadejs/wasm?url";
-import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, Sketcher, sketchCircle, sketchRectangle, sketchRoundedRectangle, topMost } from "replicad";
+import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, Sketcher, sketchCircle, sketchRoundedRectangle, topMost } from "replicad";
 import type { Shape3D } from "replicad";
 import type { DerivedDimensions, GenerateOptions, GeneratedFileName, PartDiagnostic, Settings, TriangleMesh, VerificationResult } from "./types";
 
@@ -295,18 +295,26 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     const z = d.funnelMountZ;
     const bottom = -d.funnelDepth;
     const outlet = settings.funnelOutlet;
-    const section = (w: number, h: number, height: number, x: number) => sketchRectangle(w, h, { plane: "XY", origin: [x, d.width / 2, height] });
+    const section = (w: number, h: number, height: number, x: number) => sketchRoundedRectangle(w, h, 2, { plane: "XY", origin: [x, d.width / 2, height] });
     // A low rectangular block with a sloped cavity and an outlet away from +X's tab.
-    funnel = box(0, 0, bottom, d.length, d.width, d.funnelDepth)
+    const envelope = rounded(0, 0, bottom, d.length, d.width, d.funnelDepth, 4)
+      .fillet(0.6, (finder) => finder.parallelTo("XY"));
+    funnel = envelope.clone()
       .cut(section(outlet, outlet, bottom, d.funnelOutletX).loftWith(section(d.length - 4.8, d.width - 4.8, -3, d.length / 2), {}))
-      .cut(box(2.4, 2.4, -3.01, d.length - 4.8, d.width - 4.8, 3.2))
-      .cut(box(d.funnelOutletX - outlet / 2, (d.width - outlet) / 2, bottom - 0.1, outlet, outlet, 0.2));
+      .cut(rounded(2.4, 2.4, -3.01, d.length - 4.8, d.width - 4.8, 3.2, 2))
+      .cut(rounded(d.funnelOutletX - outlet / 2, (d.width - outlet) / 2, bottom - 0.1, outlet, outlet, 0.2, 2))
+      .fillet(0.4, (finder) => finder.inPlane("XY", bottom).inBox(
+        [d.funnelOutletX - outlet / 2 - 1, (d.width - outlet) / 2 - 1, bottom - 0.01],
+        [d.funnelOutletX + outlet / 2 + 1, (d.width + outlet) / 2 + 1, bottom + 0.01]))
+      .fillet(0.4, (finder) => finder.inPlane("XY", 0).inBox([2.3, 2.3, -0.01], [d.length - 2.3, d.width - 2.3, 0.01]));
     for (const p of d.funnelMounts) {
       // Solid corner lands receive only the protruding magnets, not base bosses.
       const land = p.y < d.width / 2 ? p.y : d.width - p.y;
       const span = land + d.magnetPocketDiameter / 2 + 1.2;
-      funnel = funnel.fuse(box(p.x < d.length / 2 ? 0 : d.length - span, p.y < d.width / 2 ? 0 : d.width - span,
-        z - d.magnetPocketDepth - 1.2, span, span, -z + d.magnetPocketDepth + 1.2))
+      const cornerLand = rounded(p.x < d.length / 2 ? 0 : d.length - span, p.y < d.width / 2 ? 0 : d.width - span,
+        z - d.magnetPocketDepth - 1.2, span, span, -z + d.magnetPocketDepth + 1.2, 2)
+        .fillet(0.6, (finder) => finder.parallelTo("XY"));
+      funnel = funnel.fuse(cornerLand.intersect(envelope.clone()))
         .cut(cylinder(p.x, p.y, z, d.magnetPocketDiameter / 2, -z + 0.1));
       funnel = settings.funnelAlignment === "magnets"
         ? funnel.cut(cylinder(p.x, p.y, z - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1))
@@ -326,8 +334,8 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     if (intersectionVolume(parts[names[i]], parts[names[j]]) >= 1e-5) throw new Error(`Assembly interference: ${names[i]} / ${names[j]}`);
   }
   completed.push("No pairwise assembly interference at the closed position");
-  const outletProbe = box(d.funnelOutletX - settings.funnelOutlet / 2 + 0.1, (d.width - settings.funnelOutlet) / 2 + 0.1,
-    -d.funnelDepth - 0.1, settings.funnelOutlet - 0.2, settings.funnelOutlet - 0.2, 0.2);
+  const outletProbe = rounded(d.funnelOutletX - settings.funnelOutlet / 2 + 0.1, (d.width - settings.funnelOutlet) / 2 + 0.1,
+    -d.funnelDepth - 0.1, settings.funnelOutlet - 0.2, settings.funnelOutlet - 0.2, 0.2, 1.9);
   if (intersectionVolume(funnel, outletProbe) >= 1e-5) throw new Error("Funnel outlet must remain open");
   for (const x of d.screwXs) for (const y of d.screwYs) {
     const flowPath = sketchCircle(d.head / 2, { plane: "XY", origin: [d.funnelOutletX, d.width / 2, -d.funnelDepth] })
@@ -359,6 +367,22 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   }
   completed.push("Flat base underside and recessed screw heads clear funnel magnets or pegs");
   completed.push("Funnel mouth, continuous outlet, and attachment clearances verified");
+  for (const x of [0.2, d.length - 0.2]) for (const y of [0.2, d.width - 0.2]) {
+    if (intersectionVolume(funnel, cylinder(x, y, -d.funnelDepth / 2, 0.08, 0.2)) >= 1e-5) throw new Error("Funnel outer corners must be rounded");
+  }
+  for (const z of [-0.15, -d.funnelDepth + 0.05]) {
+    if (intersectionVolume(funnel, box(0.05, d.width / 2, z, 0.1, 0.1, 0.1)) >= 1e-5 ||
+        intersectionVolume(funnel, box(0.8, d.width / 2, z, 0.1, 0.1, 0.1)) < 0.0009) throw new Error("Funnel edge rounds must retain the adjacent wall");
+  }
+  // Sample the rounded cross-section above the outlet rim fillet: at the
+  // bottom face the rim round intentionally removes this corner material.
+  const sectionFraction = 1 / (d.funnelDepth - 3);
+  const outletCorner = cylinder(
+    (d.funnelOutletX - settings.funnelOutlet / 2) * (1 - sectionFraction) + 2.4 * sectionFraction + 0.1,
+    (d.width - settings.funnelOutlet) / 2 * (1 - sectionFraction) + 2.4 * sectionFraction + 0.1,
+    -d.funnelDepth + 1, 0.03, 0.02);
+  if (intersectionVolume(funnel, outletCorner) < 0.00005) throw new Error("Funnel outlet must retain rounded corners");
+  completed.push("Rounded funnel corners, outer edges, and outlet verified");
   // The pitch-repeating geometry lets us sample the two boundaries and the
   // first interior station. This is a fast check, not a full per-station proof.
   const stations = [...new Set([0, 1, settings.columns].filter((station) => station <= settings.columns))];

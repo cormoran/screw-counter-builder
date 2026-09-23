@@ -17,6 +17,7 @@ describe("browser CAD integration", () => {
     expect(model.diagnostics.lid.bounds.max[0]).toBeCloseTo(model.dimensions.rim + 0.5);
     expect(model.diagnostics.base.bounds.min[2]).toBeCloseTo(0);
     expect(model.verification.completed).toContain("Flat base underside and recessed screw heads clear funnel magnets or pegs");
+    expect(model.verification.completed).toContain("Rounded funnel corners, outer edges, and outlet verified");
     expect(model.diagnostics.funnel.bounds.min[2]).toBeCloseTo(-14);
     expect(model.diagnostics.funnel.bounds.max[2]).toBeCloseTo(attachment === "pegs" ? model.dimensions.funnelBasePocketDepth - 0.3 : 0);
     expect(model.diagnostics.funnel.bounds.min[0]).toBeCloseTo(0);
@@ -34,6 +35,7 @@ describe("browser CAD integration", () => {
     const model = await generateModel({ rows: 1, columns: 1, magnetDiameter: 5, magnetDiameterClearance: 0, ...attachment });
     expect(model.diagnostics.base.bounds.min[2]).toBeCloseTo(0);
     expect(model.verification.completed).toContain("Flat base underside and recessed screw heads clear funnel magnets or pegs");
+    expect(model.verification.completed).toContain("Rounded funnel corners, outer edges, and outlet verified");
     expect(model.verification.completed).toContain("Funnel mouth, continuous outlet, and attachment clearances verified");
     expect(model.verification.completed).toContain("5 valid single solids");
   }, 120_000);

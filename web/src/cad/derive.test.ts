@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { deriveDimensions, validateSettings } from "./index";
 
 describe("browser CAD dimensions", () => {
+  it("moves coaxial corner mounts outward while retaining pocket walls", () => {
+    expect(deriveDimensions().joints[0]).toEqual({ x: 4.5, y: 4.5 });
+    for (const magnetDiameter of [3, 5, 6, 8]) for (const magnetDiameterClearance of [0, 0.6]) {
+      const d = deriveDimensions({ magnetDiameter, magnetDiameterClearance, joint: "glue" });
+      expect(d.joints).toEqual(d.magnets);
+      expect(d.funnelMounts).toEqual(d.joints);
+      expect(d.joints[0].x).toBeLessThan(d.rim / 2 + 0.5);
+      expect(d.joints[0].x - d.magnetPocketDiameter / 2).toBeGreaterThanOrEqual(1.35 - 1e-8);
+    }
+  });
+
   it("keeps the funnel low, fixes it at screw corners, and offsets the outlet away from the tab", () => {
     for (const columns of [1, 10, 24]) {
       const d = deriveDimensions({ columns });
