@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS, deriveDimensions, validateSettings } from "./index";
 
 describe("browser CAD dimensions", () => {
+  it("shortens only the release end of the tray cutout and covers larger windows", () => {
+    const standard = deriveDimensions({ trayStyle: "cutout" });
+    expect(standard.trayOpeningX - standard.rim).toBe(8);
+    for (const headDiameter of [3.2, 6, 10]) {
+      const d = deriveDimensions({ trayStyle: "cutout", headDiameter, funnelOutlet: 24 });
+      expect(d.trayOpeningX).toBeGreaterThanOrEqual(d.releaseX + d.window / 2);
+      expect(d.trayOpeningX + d.trayOpeningLength).toBeCloseTo(d.length - d.rim);
+      expect(d.trayOpeningX).toBeLessThan(d.screwXs[0] - d.head / 2);
+    }
+  });
+
   it("selects the tray by the inclusive 5 mm boundary and preserves explicit choices", () => {
     expect(deriveDimensions().trayStyle).toBe("holes");
     for (const screwLength of [1, 4.9, 5]) expect(deriveDimensions({ screwLength }).trayStyle).toBe("holes");

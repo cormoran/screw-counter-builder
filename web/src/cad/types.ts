@@ -70,6 +70,8 @@ export interface DetentDimensions {
 /** Calculated dimensions shared by preview, CAD construction, and export metadata. */
 export interface DerivedDimensions {
   trayStyle: "holes" | "cutout";
+  trayOpeningX: number;
+  trayOpeningLength: number;
   shaft: number;
   head: number;
   slot: number;
