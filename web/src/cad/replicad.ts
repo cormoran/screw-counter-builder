@@ -150,18 +150,14 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const handleRibWidth = storageHandleWidth - 2;
   if (!tray) {
     tray = rounded(0, 0, d.joinZ, d.length, d.width, d.deckThickness, 4);
-    // Remove the tray floor except for the perimeter/fastener lands and two
-    // narrow ledges that keep the slider captive from above. Screw heads now
-    // rest directly on the slider instead of entering tray holes.
+    // Open only the screw-head area between two narrow ledges that keep the
+    // slider captive from above. The floor outside the slider stays solid.
     const deckOpeningX = d.rim;
     const deckOpeningLength = d.length - 2 * d.rim;
-    for (const [y, height] of [
-      [frameWall, d.sliderInsetY - frameWall],
-      [d.sliderInsetY + sliderGuideWidth, d.width - 2 * (d.sliderInsetY + sliderGuideWidth)],
-      [d.width - d.sliderInsetY, d.sliderInsetY - frameWall],
-    ] as const) {
-      if (height > 0) tray = tray.cut(box(deckOpeningX, y, d.joinZ - 0.1, deckOpeningLength, height, d.deckThickness + 0.2));
-    }
+    tray = tray.cut(box(
+      deckOpeningX, d.sliderInsetY + sliderGuideWidth, d.joinZ - 0.1,
+      deckOpeningLength, d.width - 2 * (d.sliderInsetY + sliderGuideWidth), d.deckThickness + 0.2,
+    ));
     let rim = rounded(0, 0, d.deckTop, d.length, d.width, d.top - d.deckTop, 4)
       .cut(rounded(frameWall, frameWall, d.deckTop - 0.1, d.length - 2 * frameWall, d.width - 2 * frameWall, d.top - d.deckTop + 0.2, 1.6));
     // One reinforced corner carries each magnet above its assembly screw.
@@ -320,11 +316,14 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const trayOpening = cylinder(firstHoleX, firstHoleY, d.joinZ, d.head / 2, d.deckThickness);
   const lowGuide = cylinder(d.length / 2, d.sliderInsetY + sliderGuideWidth / 2, d.joinZ, 0.2, d.deckThickness);
   const highGuide = cylinder(d.length / 2, d.width - d.sliderInsetY - sliderGuideWidth / 2, d.joinZ, 0.2, d.deckThickness);
+  const lowOuterFloor = cylinder(d.length / 2, (frameWall + d.sliderInsetY) / 2, d.joinZ, 0.2, d.deckThickness);
+  const highOuterFloor = cylinder(d.length / 2, d.width - (frameWall + d.sliderInsetY) / 2, d.joinZ, 0.2, d.deckThickness);
   if (intersectionVolume(tray, trayOpening) >= 1e-5 ||
-      intersectionVolume(tray, lowGuide) < 0.01 || intersectionVolume(tray, highGuide) < 0.01) {
-    throw new Error("Tray floor must stay open around screw heads while retaining both slider guides");
+      intersectionVolume(tray, lowGuide) < 0.01 || intersectionVolume(tray, highGuide) < 0.01 ||
+      intersectionVolume(tray, lowOuterFloor) < 0.01 || intersectionVolume(tray, highOuterFloor) < 0.01) {
+    throw new Error("Tray floor must open only around screw heads while retaining both slider guides and solid outer panels");
   }
-  completed.push("Full base floor, square outlets, and open tray floor with slider guides verified");
+  completed.push("Full base floor, square outlets, and tray screw area with slider guides and solid outer panels verified");
   const fullReleaseTravel = settings.columns * d.pitch;
   // Exclude the click tip here so the opposite-side rigid rib must catch.
   const sliderWithoutClickTip = d.detent
