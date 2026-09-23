@@ -283,12 +283,12 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
           .cut(cylinder(p.x, p.y, -1.2, 1.2, 1.3));
         continue;
       }
-      // Extend rectangular mounting lands to the print bed so their undersides
+      // Extend rounded rectangular mounting lands to the print bed so their undersides
       // do not hang over the funnel cavity. Preserve the rounded outer envelope.
       const land = p.y < d.width / 2 ? p.y : d.width - p.y;
       const span = land + d.magnetPocketDiameter / 2 + 1.2;
-      const cornerLand = box(p.x < d.length / 2 ? 0 : d.length - span, p.y < d.width / 2 ? 0 : d.width - span,
-        bottom, span, span, d.funnelDepth)
+      const cornerLand = rounded(p.x < d.length / 2 ? 0 : d.length - span, p.y < d.width / 2 ? 0 : d.width - span,
+        bottom, span, span, d.funnelDepth, 2)
         // Wide outlets can overlap the blocks: a vertical cut keeps the outlet
         // open without reintroducing an unsupported underside.
         .cut(rounded(d.funnelOutletX - outlet / 2, (d.width - outlet) / 2, bottom - 0.1,
