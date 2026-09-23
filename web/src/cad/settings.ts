@@ -70,6 +70,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   if (settings.lidAlignment !== "magnets" && settings.lidAlignment !== "pegs") errors.push("lidAlignment must be magnets or pegs");
   if (!["magnets", "pegs"].includes(settings.funnelAlignment)) errors.push("funnelAlignment must be magnets or pegs");
   if (!Number.isFinite(settings.funnelOutlet) || settings.funnelOutlet < 10 || settings.funnelOutlet > 24) errors.push("funnelOutlet must be 10..24 mm");
+  if (settings.joint === "screws" && settings.magnetDiameter < 5) errors.push("Screw joints need magnet or peg diameter at least 5 mm for screw access");
   if (settings.magnetDiameter < 3 || settings.magnetDiameter > 8) errors.push("Supported magnet diameter is 3..8 mm");
   if (settings.magnetThickness < 1 || settings.magnetThickness > 3) errors.push("Supported magnet thickness is 1..3 mm");
   if (settings.slideClearance < 0.15 || settings.slideClearance > 0.6) errors.push("slideClearance must be 0.15..0.6 mm");

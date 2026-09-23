@@ -36,9 +36,11 @@ export function deriveDimensions(input: SettingsInput | Settings = {}): DerivedD
     shaft, head, slot, drop, window, pitch, rim, wall, sliderInsetY, releaseX,
     screwXs, screwYs, length, width, floor, sliderZ, sliderThickness, joinZ, deckThickness, deckTop, screwSpaceHeight: c.screwSpaceHeight, top,
     joints, magnets,
-    funnelDepth: Math.max(12, (Math.max(length, width) - 4.8 - c.funnelOutlet) / 2 + 3),
-    funnelMountZ: 0,
-    funnelMounts: [-1, 1].map((side) => ({ x: length / 2, y: side < 0 ? -(c.magnetDiameter + c.magnetDiameterClearance) / 2 - 1 : width + (c.magnetDiameter + c.magnetDiameterClearance) / 2 + 1 })),
+    funnelDepth: 14,
+    // Seat the embedded magnets 0.6 mm below the assembly screw heads.
+    funnelMountZ: -(c.magnetThickness + c.magnetDepthClearance + 0.6),
+    funnelMounts: joints.map(({ x, y }) => ({ x, y })),
+    funnelOutletX: 2.4 + c.funnelOutlet / 2 + (length - 4.8 - c.funnelOutlet) * 0.2,
     magnetPocketDiameter: c.magnetDiameter + c.magnetDiameterClearance,
     magnetPocketDepth: c.magnetThickness + c.magnetDepthClearance,
   };

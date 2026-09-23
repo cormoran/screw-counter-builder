@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
 import { deriveDimensions, validateSettings } from "./index";
 
 describe("browser CAD dimensions", () => {
+  it("keeps the funnel low, fixes it at screw corners, and offsets the outlet away from the tab", () => {
+    for (const columns of [1, 10, 24]) {
+      const d = deriveDimensions({ columns });
+      expect(d.funnelDepth).toBe(14);
+      expect(d.funnelMounts).toEqual(d.joints);
+      expect(d.funnelMountZ + d.magnetPocketDepth).toBeCloseTo(-0.6);
+      expect(d.funnelOutletX).toBeLessThan(d.length / 2);
+      expect(d.funnelOutletX - 8).toBeGreaterThan(2.4);
+    }
+    expect(validateSettings({ magnetDiameter: 4.9 })).toContain("Screw joints need magnet or peg diameter at least 5 mm for screw access");
+    expect(validateSettings({ magnetDiameter: 5 })).toEqual([]);
+    expect(validateSettings({ magnetDiameter: 3, joint: "glue" })).toEqual([]);
+  });
+
   it("derives the print-feedback M2 4x2 dimensions", () => {
     const d = deriveDimensions({ rows: 4, columns: 2, screw: "M2" });
     expect(d.length).toBeCloseTo(43.25);

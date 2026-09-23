@@ -15,9 +15,18 @@ describe("browser CAD integration", () => {
   it.each(["magnets", "pegs"] as const)("builds the cutout lid and funnel using %s", async (attachment) => {
     const model = await generateModel({ rows: 1, columns: 1, lidStyle: "cutout", lidAlignment: attachment, funnelAlignment: attachment, funnelOutlet: 24 });
     expect(model.diagnostics.lid.bounds.max[0]).toBeCloseTo(model.dimensions.rim + 0.5);
-    expect(model.diagnostics.funnel.bounds.min[2]).toBeLessThan(-12);
+    expect(model.diagnostics.funnel.bounds.min[2]).toBeCloseTo(-14);
+    expect(model.diagnostics.funnel.bounds.max[2]).toBeCloseTo(0);
+    expect(model.diagnostics.funnel.bounds.min[0]).toBeCloseTo(0);
+    expect(model.diagnostics.funnel.bounds.max[0]).toBeCloseTo(model.dimensions.length);
     expect(model.verification.completed).toContain("Funnel mouth, continuous outlet, and attachment clearances verified");
     expect(model.files["funnel.stl"].size).toBeGreaterThan(84);
+  }, 120_000);
+
+  it.each(["magnets", "pegs"] as const)("allows screw insertion with minimum-size embedded %s", async (funnelAlignment) => {
+    const model = await generateModel({ rows: 1, columns: 1, magnetDiameter: 5, magnetDiameterClearance: 0, funnelAlignment });
+    expect(model.verification.completed).toContain("Funnel mouth, continuous outlet, and attachment clearances verified");
+    expect(model.verification.completed).toContain("5 valid single solids");
   }, 120_000);
 
   it.each([

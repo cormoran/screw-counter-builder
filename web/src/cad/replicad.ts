@@ -51,7 +51,7 @@ export function partKeys(settings: Settings, d: DerivedDimensions) {
     base: JSON.stringify([d.length, d.width, d.joinZ, d.wall, d.floor, d.pitch, settings.columns, d.screwXs, d.screwYs, d.drop, d.joints,
       d.detent ? [d.detent.tipY, d.detent.notchX, d.detent.notchRadius] : null, settings.joint, d.funnelMounts, d.funnelMountZ, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment]),
     tray: JSON.stringify([d.length, d.width, d.rim, d.joinZ, d.deckThickness, d.deckTop, d.top, d.sliderInsetY, d.joints, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.joint]),
-    funnel: JSON.stringify([d.length, d.width, d.funnelDepth, d.funnelMountZ, d.funnelMounts, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment, settings.funnelOutlet]),
+    funnel: JSON.stringify([d.length, d.width, d.funnelOutletX, d.funnelDepth, d.funnelMountZ, d.funnelMounts, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment, settings.funnelOutlet]),
     slider: JSON.stringify([d.width, d.sliderInsetY, d.sliderZ, d.length, d.sliderThickness, d.pitch, settings.columns, d.releaseX, d.window, d.slot, d.screwXs, d.screwYs, d.detent]),
     lid: JSON.stringify([d.top, d.length, d.width, d.rim, d.deckTop, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.lidAlignment, settings.lidStyle]),
   };
@@ -119,8 +119,10 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   }
   if (!reusable("base")) {
     for (const p of d.funnelMounts) {
-      base = base.fuse(cylinder(p.x, p.y, d.funnelMountZ, d.magnetPocketDiameter / 2 + 2, d.magnetPocketDepth + 0.5))
+      base = base.fuse(cylinder(p.x, p.y, d.funnelMountZ, d.magnetPocketDiameter / 2 + 1, -d.funnelMountZ + 0.1))
         .cut(cylinder(p.x, p.y, d.funnelMountZ - 0.1, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1));
+      // Leave a 4.6 mm access bore through the annular magnet seat for M2 heads.
+      if (settings.joint === "screws") base = base.cut(cylinder(p.x, p.y, d.funnelMountZ - 0.1, 2.3, -d.funnelMountZ + 0.2));
       if (settings.funnelAlignment === "pegs") {
         base = base.cut(cylinder(p.x, p.y, d.funnelMountZ + d.magnetPocketDepth * 0.4, d.magnetPocketDiameter / 2 + 0.3, d.magnetPocketDepth * 0.6));
       }
@@ -294,18 +296,21 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   let funnel = reusable("funnel")?.shape;
   if (!funnel) {
     const z = d.funnelMountZ;
-    const bottom = z - d.funnelDepth - 3;
+    const bottom = -d.funnelDepth;
     const outlet = settings.funnelOutlet;
-    const section = (w: number, h: number, height: number) => sketchRectangle(w, h, { plane: "XY", origin: [d.length / 2, d.width / 2, height] });
-    // Matching rectangular lofts make four uninterrupted slopes to one outlet.
-    // The 3 mm collar keeps every base hole above the full-size mouth.
-    funnel = section(outlet + 4.8, outlet + 4.8, bottom).loftWith(section(d.length, d.width, z - 3), {})
-      .fuse(box(0, 0, z - 3.1, d.length, d.width, 3.1))
-      .cut(section(outlet, outlet, bottom).loftWith(section(d.length - 4.8, d.width - 4.8, z - 3), {}))
-      .cut(box(2.4, 2.4, z - 3.01, d.length - 4.8, d.width - 4.8, 3.2))
-      .cut(box((d.length - outlet) / 2, (d.width - outlet) / 2, bottom - 0.1, outlet, outlet, 0.2));
+    const section = (w: number, h: number, height: number, x: number) => sketchRectangle(w, h, { plane: "XY", origin: [x, d.width / 2, height] });
+    // A low rectangular block with a sloped cavity and an outlet away from +X's tab.
+    funnel = box(0, 0, bottom, d.length, d.width, d.funnelDepth)
+      .cut(section(outlet, outlet, bottom, d.funnelOutletX).loftWith(section(d.length - 4.8, d.width - 4.8, -3, d.length / 2), {}))
+      .cut(box(2.4, 2.4, -3.01, d.length - 4.8, d.width - 4.8, 3.2))
+      .cut(box(d.funnelOutletX - outlet / 2, (d.width - outlet) / 2, bottom - 0.1, outlet, outlet, 0.2));
     for (const p of d.funnelMounts) {
-      funnel = funnel.fuse(cylinder(p.x, p.y, z - d.magnetPocketDepth - 1.2, d.magnetPocketDiameter / 2 + 2, d.magnetPocketDepth + 1.2));
+      // Solid corner lands surround the pockets; sockets accept the base corners.
+      const land = p.y < d.width / 2 ? p.y : d.width - p.y;
+      const span = land + d.magnetPocketDiameter / 2 + 1.2;
+      funnel = funnel.fuse(box(p.x < d.length / 2 ? 0 : d.length - span, p.y < d.width / 2 ? 0 : d.width - span,
+        z - d.magnetPocketDepth - 1.2, span, span, -z + d.magnetPocketDepth + 1.2))
+        .cut(cylinder(p.x, p.y, z, d.magnetPocketDiameter / 2 + 1.15, -z + 0.1));
       funnel = settings.funnelAlignment === "magnets"
         ? funnel.cut(cylinder(p.x, p.y, z - d.magnetPocketDepth, d.magnetPocketDiameter / 2, d.magnetPocketDepth + 0.1))
         : funnel.fuse(cylinder(p.x, p.y, z - 0.1, (d.magnetPocketDiameter - 0.3) / 2, d.magnetPocketDepth - 0.2)
@@ -318,16 +323,19 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   const completed: string[] = [];
   if (configuration.validate !== false) {
   if (Object.values(parts).every((part) => !part.isNull && part.solids.length === 1)) completed.push("5 valid single solids");
-  else throw new Error("CAD build produced a null or multi-solid part");
+  else throw new Error(`CAD build produced a null or multi-solid part: ${Object.entries(parts).map(([name, part]) => `${name}=${part.solids.length}`).join(", ")}`);
   const names = Object.keys(parts) as Array<keyof typeof parts>;
   for (let i = 0; i < names.length; i += 1) for (let j = i + 1; j < names.length; j += 1) {
     if (intersectionVolume(parts[names[i]], parts[names[j]]) >= 1e-5) throw new Error(`Assembly interference: ${names[i]} / ${names[j]}`);
   }
   completed.push("No pairwise assembly interference at the closed position");
-  const outletProbe = box((d.length - settings.funnelOutlet) / 2 + 0.1, (d.width - settings.funnelOutlet) / 2 + 0.1,
-    d.funnelMountZ - d.funnelDepth - 3.1, settings.funnelOutlet - 0.2, settings.funnelOutlet - 0.2, d.funnelDepth + 3.2);
-  if (intersectionVolume(funnel, outletProbe) >= 1e-5) throw new Error("Funnel outlet must remain open throughout its depth");
+  const outletProbe = box(d.funnelOutletX - settings.funnelOutlet / 2 + 0.1, (d.width - settings.funnelOutlet) / 2 + 0.1,
+    -d.funnelDepth - 0.1, settings.funnelOutlet - 0.2, settings.funnelOutlet - 0.2, 0.2);
+  if (intersectionVolume(funnel, outletProbe) >= 1e-5) throw new Error("Funnel outlet must remain open");
   for (const x of d.screwXs) for (const y of d.screwYs) {
+    const flowPath = sketchCircle(d.head / 2, { plane: "XY", origin: [d.funnelOutletX, d.width / 2, -d.funnelDepth] })
+      .loftWith(sketchCircle(d.head / 2, { plane: "XY", origin: [x, y, -3] }), {});
+    if (intersectionVolume(funnel, flowPath) >= 1e-5) throw new Error("Funnel corner lands block a screw flow path");
     if (intersectionVolume(funnel, cylinder(x, y, -2.5, d.head / 2, 2.6)) >= 1e-5) throw new Error("Funnel mouth blocks a base outlet");
   }
   for (const p of d.funnelMounts) {
@@ -339,6 +347,13 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       // A shoulder catches the split peg after insertion; insertion flex is unmeasured.
       if (intersectionVolume(base, funnel.clone().translate(0, 0, -d.magnetPocketDepth * 0.35)) < 0.001) throw new Error("Funnel snap pegs lack retaining shoulders");
     }
+  }
+  for (const part of [base, funnel]) {
+    const [min, max] = part.boundingBox.bounds;
+    if (min[0] < -1e-5 || min[1] < -1e-5 || max[0] > d.length + 1e-5 || max[1] > d.width + 1e-5) throw new Error("Funnel attachment protrudes beyond the base footprint");
+  }
+  if (settings.joint === "screws") for (const p of d.joints) {
+    if (intersectionVolume(base, cylinder(p.x, p.y, d.funnelMountZ, 2.1, -d.funnelMountZ + 2.2)) >= 1e-5) throw new Error("Embedded mount blocks assembly screw insertion");
   }
   completed.push("Funnel mouth, continuous outlet, and attachment clearances verified");
   // The pitch-repeating geometry lets us sample the two boundaries and the
