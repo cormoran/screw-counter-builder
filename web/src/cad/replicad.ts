@@ -1,6 +1,7 @@
 import initOpenCascade from "replicad-opencascadejs";
 import openCascadeWasm from "replicad-opencascadejs/wasm?url";
 import { exportSTEP, makeBox, makeCylinder, measureShapeVolumeProperties, setOC, Sketcher, sketchCircle, sketchRectangle, sketchRoundedRectangle, topMost } from "replicad";
+import { partKeys } from "./part-keys";
 import { TRAY_ENTRY_FLARE } from "./settings";
 import type { Shape3D } from "replicad";
 import type { DerivedDimensions, GenerateOptions, GeneratedFileName, PartDiagnostic, ModelPart, Settings, TriangleMesh, VerificationResult } from "./types";
@@ -45,18 +46,6 @@ const prismYZ = (points: Array<[number, number]>, x: number, length: number): Sh
 type CachedCadPart = { key: string; shape: Shape3D; mesh: TriangleMesh; meshTolerance: number; diagnostic: PartDiagnostic; stl?: Blob };
 const partCache: Partial<Record<"base" | "tray" | "slider" | "lid" | "funnel", CachedCadPart>> = {};
 
-// Keep each key limited to the dimensions read while constructing that part.
-// A new geometry dependency must be added here when a part is edited.
-export function partKeys(settings: Settings, d: DerivedDimensions) {
-  return {
-    base: JSON.stringify([d.length, d.width, d.joinZ, d.wall, d.floor, d.pitch, settings.columns, d.screwXs, d.screwYs, d.drop, d.joints,
-      d.detent ? [d.detent.tipY, d.detent.notchX, d.detent.notchRadius] : null, settings.joint, d.funnelMounts, d.funnelMountZ, d.funnelBasePocketDepth, d.baseScrewHeadSeat, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment]),
-    tray: JSON.stringify([d.trayStyle, d.screwXs, d.screwYs, d.drop, d.length, d.width, d.rim, d.joinZ, d.deckThickness, d.deckTop, d.top, d.baseScrewHeadSeat, d.funnelBasePocketDepth, d.sliderInsetY, d.joints, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.joint]),
-    funnel: JSON.stringify([d.length, d.width, d.funnelOutletX, d.funnelDepth, d.funnelMountZ, d.funnelBasePocketDepth, d.funnelMounts, d.magnetPocketDiameter, d.magnetPocketDepth, settings.funnelAlignment, settings.funnelOutlet]),
-    slider: JSON.stringify([d.width, d.sliderInsetY, d.sliderZ, d.length, d.sliderThickness, d.pitch, settings.columns, d.releaseX, d.window, d.slot, d.screwXs, d.screwYs, d.detent]),
-    lid: JSON.stringify([d.top, d.length, d.width, d.rim, d.deckTop, d.magnets, d.magnetPocketDiameter, d.magnetPocketDepth, settings.lidAlignment, settings.lidStyle]),
-  };
-}
 
 const printOrientation = (shape: Shape3D): Shape3D => {
   const [min] = shape.boundingBox.bounds;

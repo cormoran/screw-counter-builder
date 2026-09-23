@@ -1,5 +1,5 @@
 import { generatePreviewModel } from './generate'
-import { partKeys } from './replicad'
+import { partKeys } from './part-keys'
 import type { PartPreview, GenerationProgress, ModelPart, PreviewModel, Settings, TriangleMesh } from './types'
 
 type PartKeys = Record<ModelPart, string>

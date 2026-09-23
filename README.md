@@ -69,3 +69,5 @@ Set the target **Screw length** (default 5 mm) and **Tray style** in the basic s
 Length and style are included in settings files and restored across reloads. Older files without these fields use 5 mm and Auto. The preview and exports use the resolved style; changing style changes only the tray geometry.
 
 The live preview and model generation display each finished part in this order: base → slider → tray → funnel → lid. You can inspect the available parts while the remainder is building. The camera keeps the same assembly framing as parts arrive; downloadable files become ready after the complete model passes export validation.
+
+Unchanged parts remain visible from the start of a new generation; only parts whose geometry settings changed wait for their replacement. This also applies when restarting a CAD worker or starting from the default preview.

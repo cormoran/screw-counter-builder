@@ -1,3 +1,4 @@
+import { PreviewMeshCache } from './cad/preview-mesh-cache'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import JSZip from 'jszip'
 import { DEFAULT_PREVIEW_CONFIRM_BYTES, DEFAULT_SETTINGS, deriveDimensions, generateModel, generatePreviewModel, getDefaultPreviewInfo, loadDefaultPreview, validateSettings, type GeneratedModel, type ModelPart, type ProgressivePreview, type Settings, type TriangleMesh } from './cad'
@@ -42,6 +43,7 @@ export default function App() {
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransfer | null>(null)
   const generation = useRef<AbortController | null>(null)
   const settingsFileInput = useRef<HTMLInputElement>(null)
+  const previewCache = useRef(new PreviewMeshCache())
   const previewGeneration = useRef<AbortController | null>(null)
   const printRequest = useRef(0)
   const [previewRetry, setPreviewRetry] = useState(0)
@@ -188,10 +190,13 @@ export default function App() {
         setPendingTransfer({ label: text(language, 'downloadCadEngine'), detail: text(language, 'cadEngineDetail'), action: () => { wasmApproved.current = true; setPreviewRetry((value) => value + 1) } })
         return
       }
-      const readyMeshes: Partial<Record<ModelPart, TriangleMesh>> = {}
+      const nextDimensions = deriveDimensions(settings)
+      const readyMeshes = previewCache.current.match(settings, nextDimensions)
+      setPreview({ dimensions: nextDimensions, partMeshes: { ...readyMeshes } })
       void generatePreviewModel(settings, {
         onPart: ({ part, mesh, dimensions }) => {
           if (controller.signal.aborted || previewGeneration.current !== controller) return
+          previewCache.current.remember(settings, dimensions, { [part]: mesh })
           readyMeshes[part] = mesh
           setPreview({ dimensions, partMeshes: { ...readyMeshes } })
         },
@@ -199,6 +204,7 @@ export default function App() {
         onProgress: (progress) => setPreviewStatus(localizeProgress(language, progress.message) ?? text(language, 'generatingPreview')),
       }).then((generated) => {
         if (previewGeneration.current !== controller) return
+        previewCache.current.remember(settings, generated.dimensions, generated.partMeshes)
         setPreview(generated)
         setPreviewState('idle')
         setPreviewStatus(text(language, 'previewUpdated'))
@@ -226,7 +232,9 @@ export default function App() {
       }
       const partMeshes = await loadDefaultPreview()
       if (hasEditedSettings.current) return
-      setPreview({ dimensions: deriveDimensions(DEFAULT_SETTINGS), partMeshes })
+      const defaultDimensions = deriveDimensions(DEFAULT_SETTINGS)
+      previewCache.current.remember(DEFAULT_SETTINGS, defaultDimensions, partMeshes)
+      setPreview({ dimensions: defaultDimensions, partMeshes })
       setPreviewState('idle')
       setPreviewStatus(text(language, 'showingDefaultPreview'))
     } catch (error) {
@@ -252,10 +260,13 @@ export default function App() {
     setState('generating')
     setStatus(text(language, 'preparingCad'))
     try {
-      const readyMeshes: Partial<Record<ModelPart, TriangleMesh>> = {}
+      const nextDimensions = deriveDimensions(settings)
+      const readyMeshes = previewCache.current.match(settings, nextDimensions)
+      setPreview({ dimensions: nextDimensions, partMeshes: { ...readyMeshes } })
       const generated = await generateModel(settings, {
         onPart: ({ part, mesh, dimensions }) => {
           if (controller.signal.aborted || generation.current !== controller) return
+          previewCache.current.remember(settings, dimensions, { [part]: mesh })
           readyMeshes[part] = mesh
           setPreview({ dimensions, partMeshes: { ...readyMeshes } })
         },
@@ -264,6 +275,7 @@ export default function App() {
       })
       if (generation.current !== controller) return null
       setModel(generated)
+      previewCache.current.remember(settings, generated.dimensions, generated.partMeshes)
       setPreview({ dimensions: generated.dimensions, partMeshes: generated.partMeshes })
       setState('complete')
       setStatus(text(language, 'modelGenerated'))
