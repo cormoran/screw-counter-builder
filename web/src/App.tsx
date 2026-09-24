@@ -8,7 +8,7 @@ import type { ViewMode, ViewerCameraState } from './components/ModelViewer'
 import { SettingsForm } from './components/SettingsForm'
 import { differsFromDefaults, loadRealtimePreview, loadSettings, loadViewMode, saveRealtimePreview, saveSettings, saveViewMode } from './settings-session'
 import { PRINT_PLATE_OPTIONS, getSettingsCategories, getSettingsFields, type PrintPlateOption } from './settings-schema'
-import { currentConnectionNeedsConfirmation } from './network'
+import { currentConnectionNeedsConfirmation, currentConnectionNeedsLargeDownloadConfirmation } from './network'
 import { createSettingsFile, parseSettingsFile } from './settings-transfer'
 import { LANGUAGE_OPTIONS, formatNumber, loadLanguage, localizeProgress, localizeValidation, saveLanguage, text, type Language } from './i18n'
 import './styles/preview.css'
@@ -358,7 +358,7 @@ export default function App() {
     <div className="tool-layout">
       <section className="panel form-panel" aria-labelledby="settings-title">
         <div className="section-heading settings-heading"><div><h2 id="settings-title">{text(language, 'settings')}</h2><span>{text(language, 'basic')}</span></div><div className="settings-actions"><button className="reset-button" type="button" onClick={() => settingsFileInput.current?.click()}>{text(language, 'importSettings')}</button><input ref={settingsFileInput} type="file" accept=".json,application/json" hidden onChange={(event) => void importSettingsFile(event.currentTarget.files?.[0])} /><button className="reset-button" type="button" disabled={!differsFromDefaults(settings)} onClick={resetSettings}>{text(language, 'resetSettings')}</button></div></div>
-        {displayMeshes && !isPrintPreview && previewMode !== '2d' && <div className="settings-mini-preview"><DimensionPreview dimensions={displayDimensions} language={language} compact /></div>}
+        {displayMeshes && !isPrintPreview && previewMode !== '2d' && <div className="settings-mini-preview"><DimensionPreview dimensions={displayDimensions} language={language} /></div>}
         <SettingsForm fields={settingsFields.filter((field) => field.category === 'basic')} settings={settings} onChange={update} />
         <button className="details-button" type="button" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}>
           {advanced ? text(language, 'hideAdvanced') : text(language, 'showAdvanced')} <span aria-hidden="true">⌄</span>
@@ -402,14 +402,14 @@ export default function App() {
             {state === 'generating' ? text(language, 'generating') : text(language, 'generate')}
           </button>
           {state === 'generating' && <button className="details-button" type="button" onClick={() => generation.current?.abort()}>{text(language, 'cancelGeneration')}</button>}
-          {model && <DownloadArea language={language} model={model} settings={settings} />}
+          {model && <DownloadArea language={language} model={model} settings={settings} onConfirmTransfer={setPendingTransfer} />}
           <div className="print-3mf">
             <h3>{text(language, 'print3mf')}</h3>
             <p>{text(language, 'print3mfDescription')}</p>
             <label className="plate-select" htmlFor="print-plate-size"><span>{text(language, 'plateSize')}</span><select id="print-plate-size" value={selectedPlateId} disabled={printState === 'generating'} onChange={(event) => selectPrintPlate(event.target.value as PrintPlateOption['id'])}>{PRINT_PLATE_OPTIONS.map((plate) => <option key={plate.id} value={plate.id}>{plate.label} ({plate.printers})</option>)}</select></label>
             <button className="zip-button" type="button" disabled={state === 'generating' || printState === 'generating' || validation.length > 0} onClick={requestPrint3mf}>{printState === 'generating' ? text(language, 'generating3mf') : text(language, 'generate3mf')}</button>
             {printStatus && <p className={`print-status ${printState}`} role="status" aria-live="polite">{printState === 'generating' && <span className="spinner" aria-hidden="true" />}{printStatus}</p>}
-            {printArtifact && <button className="download-3mf" type="button" onClick={() => download(printArtifact.file, `ScrewCounter_${settings.screw.replace('.', 'p')}_${settings.rows}x${settings.columns}_Bambu.3mf`)}>{text(language, 'download3mf')} <span>↓</span></button>}
+            {printArtifact && <button className="download-3mf" type="button" onClick={() => requestDownload(language, printArtifact.file, `ScrewCounter_${settings.screw.replace('.', 'p')}_${settings.rows}x${settings.columns}_Bambu.3mf`, setPendingTransfer)}>{text(language, 'download3mf')} <span>↓</span></button>}
           </div>
         </section>
       </aside>
@@ -422,10 +422,18 @@ export default function App() {
   </main>
 }
 
-function DownloadArea({ language, model, settings }: { language: Language; model: GeneratedModel; settings: Settings }) {
+function DownloadArea({ language, model, settings, onConfirmTransfer }: { language: Language; model: GeneratedModel; settings: Settings; onConfirmTransfer: (transfer: PendingTransfer) => void }) {
   const prefix = `ScrewCounter_${settings.screw.replace('.', 'p')}_${settings.rows}x${settings.columns}`
   const visibleWarnings = model.warnings
   async function downloadAll() {
+    const estimatedBytes = Object.values(model.files).reduce((total, file) => total + file.size, 0) + createSettingsFile(settings).size
+    if (currentConnectionNeedsLargeDownloadConfirmation(estimatedBytes)) {
+      onConfirmTransfer({ label: text(language, 'downloadZip'), detail: text(language, 'largeDownloadDetail', { size: formatBytes(language, estimatedBytes) }), action: () => { void createZip() } })
+      return
+    }
+    await createZip()
+  }
+  async function createZip() {
     const zip = new JSZip()
     Object.entries(model.files).forEach(([name, file]) => zip.file(`${prefix}_${name}`, file))
     zip.file(`${prefix}_settings.json`, createSettingsFile(settings))
@@ -433,10 +441,18 @@ function DownloadArea({ language, model, settings }: { language: Language; model
   }
   return <div className="downloads" aria-label={text(language, 'downloadFiles')}>
     <button type="button" className="zip-button" onClick={() => void downloadAll()}>{text(language, 'downloadZip')}</button>
-    <button type="button" className="settings-download" onClick={() => download(createSettingsFile(settings), `${prefix}_settings.json`)}>{text(language, 'downloadSettings')}</button>
-    <div className="file-list">{PART_FILES.map(([file, label]) => model.files[file] && <button type="button" key={file} onClick={() => download(model.files[file], `${prefix}_${file}`)}>{text(language, label)}<span>↓</span></button>)}</div>
+    <button type="button" className="settings-download" onClick={() => requestDownload(language, createSettingsFile(settings), `${prefix}_settings.json`, onConfirmTransfer)}>{text(language, 'downloadSettings')}</button>
+    <div className="file-list">{PART_FILES.map(([file, label]) => model.files[file] && <button type="button" key={file} onClick={() => requestDownload(language, model.files[file], `${prefix}_${file}`, onConfirmTransfer)}>{text(language, label)}<span>↓</span></button>)}</div>
     {visibleWarnings.length > 0 && <div className="warnings"><strong>{text(language, 'notes')}</strong><ul>{visibleWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
   </div>
+}
+
+function requestDownload(language: Language, file: Blob, name: string, onConfirmTransfer: (transfer: PendingTransfer) => void) {
+  if (currentConnectionNeedsLargeDownloadConfirmation(file.size)) {
+    onConfirmTransfer({ label: name, detail: text(language, 'largeDownloadDetail', { size: formatBytes(language, file.size) }), action: () => download(file, name) })
+    return
+  }
+  download(file, name)
 }
 
 function DataConfirmation({ language, pending, onCancel, onContinue }: { language: Language; pending: PendingTransfer; onCancel: () => void; onContinue: () => void }) {
