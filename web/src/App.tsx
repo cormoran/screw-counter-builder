@@ -11,6 +11,7 @@ import { PRINT_PLATE_OPTIONS, getSettingsCategories, getSettingsFields, type Pri
 import { currentConnectionNeedsConfirmation, currentConnectionNeedsLargeDownloadConfirmation } from './network'
 import { createSettingsFile, parseSettingsFile } from './settings-transfer'
 import { LANGUAGE_OPTIONS, formatNumber, loadLanguage, localizeProgress, localizeValidation, saveLanguage, text, type Language } from './i18n'
+import { reportDownload } from './analytics'
 import './styles/preview.css'
 
 type State = 'ready' | 'generating' | 'complete' | 'error'
@@ -409,7 +410,7 @@ export default function App() {
             <label className="plate-select" htmlFor="print-plate-size"><span>{text(language, 'plateSize')}</span><select id="print-plate-size" value={selectedPlateId} disabled={printState === 'generating'} onChange={(event) => selectPrintPlate(event.target.value as PrintPlateOption['id'])}>{PRINT_PLATE_OPTIONS.map((plate) => <option key={plate.id} value={plate.id}>{plate.label} ({plate.printers})</option>)}</select></label>
             <button className="zip-button" type="button" disabled={state === 'generating' || printState === 'generating' || validation.length > 0} onClick={requestPrint3mf}>{printState === 'generating' ? text(language, 'generating3mf') : text(language, 'generate3mf')}</button>
             {printStatus && <p className={`print-status ${printState}`} role="status" aria-live="polite">{printState === 'generating' && <span className="spinner" aria-hidden="true" />}{printStatus}</p>}
-            {printArtifact && <button className="download-3mf" type="button" onClick={() => requestDownload(language, printArtifact.file, `ScrewCounter_${settings.screw.replace('.', 'p')}_${settings.rows}x${settings.columns}_Bambu.3mf`, setPendingTransfer)}>{text(language, 'download3mf')} <span>↓</span></button>}
+          {printArtifact && <button className="download-3mf" type="button" onClick={() => requestDownload(language, printArtifact.file, `ScrewCounter_${settings.screw.replace('.', 'p')}_${settings.rows}x${settings.columns}_Bambu.3mf`, setPendingTransfer, () => reportDownload('print_3mf', settings, '3mf'))}>{text(language, 'download3mf')} <span>↓</span></button>}
           </div>
         </section>
       </aside>
@@ -438,21 +439,23 @@ function DownloadArea({ language, model, settings, onConfirmTransfer }: { langua
     Object.entries(model.files).forEach(([name, file]) => zip.file(`${prefix}_${name}`, file))
     zip.file(`${prefix}_settings.json`, createSettingsFile(settings))
     download(await zip.generateAsync({ type: 'blob' }), `${prefix}.zip`)
+    reportDownload('model', settings, 'zip')
   }
   return <div className="downloads" aria-label={text(language, 'downloadFiles')}>
     <button type="button" className="zip-button" onClick={() => void downloadAll()}>{text(language, 'downloadZip')}</button>
     <button type="button" className="settings-download" onClick={() => requestDownload(language, createSettingsFile(settings), `${prefix}_settings.json`, onConfirmTransfer)}>{text(language, 'downloadSettings')}</button>
-    <div className="file-list">{PART_FILES.map(([file, label]) => model.files[file] && <button type="button" key={file} onClick={() => requestDownload(language, model.files[file], `${prefix}_${file}`, onConfirmTransfer)}>{text(language, label)}<span>↓</span></button>)}</div>
+    <div className="file-list">{PART_FILES.map(([file, label]) => model.files[file] && <button type="button" key={file} onClick={() => requestDownload(language, model.files[file], `${prefix}_${file}`, onConfirmTransfer, () => reportDownload('model', settings, file.split('.').at(-1)!))}>{text(language, label)}<span>↓</span></button>)}</div>
     {visibleWarnings.length > 0 && <div className="warnings"><strong>{text(language, 'notes')}</strong><ul>{visibleWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
   </div>
 }
 
-function requestDownload(language: Language, file: Blob, name: string, onConfirmTransfer: (transfer: PendingTransfer) => void) {
+function requestDownload(language: Language, file: Blob, name: string, onConfirmTransfer: (transfer: PendingTransfer) => void, onDownloaded?: () => void) {
   if (currentConnectionNeedsLargeDownloadConfirmation(file.size)) {
-    onConfirmTransfer({ label: name, detail: text(language, 'largeDownloadDetail', { size: formatBytes(language, file.size) }), action: () => download(file, name) })
+    onConfirmTransfer({ label: name, detail: text(language, 'largeDownloadDetail', { size: formatBytes(language, file.size) }), action: () => { download(file, name); onDownloaded?.() } })
     return
   }
   download(file, name)
+  onDownloaded?.()
 }
 
 function DataConfirmation({ language, pending, onCancel, onContinue }: { language: Language; pending: PendingTransfer; onCancel: () => void; onContinue: () => void }) {

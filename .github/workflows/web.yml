@@ -25,6 +25,8 @@ jobs:
       - run: git diff --exit-code -- web/public/default-preview
       - run: npm run build
         working-directory: web
+        env:
+          VITE_GA_MEASUREMENT_ID: ${{ secrets.GA_MEASUREMENT_ID }}
       - uses: actions/configure-pages@v5
         if: github.event_name == 'push'
       - uses: actions/upload-pages-artifact@v4
