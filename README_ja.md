@@ -17,7 +17,7 @@
 
 ### Google Analytics のダウンロード計測
 
-測定 ID は `G-WD1LY85BFN` です。ZIP／STL／STEP／寸法JSONの完了ダウンロードには `model_download`、3MF の完了ダウンロードには `print_3mf_download` を送信します。レポートに値を出すには、GA4 で次のイベントスコープのカスタム指標を登録してください: `model_rows`、`model_columns`、`model_capacity`、`screw_length_mm`、`funnel_height_mm`、`funnel_outlet_mm`。`screw_size` と `download_format` は、必要に応じてカスタム ディメンションにできるイベントパラメータです。漏斗高さが未指定の場合は `0` と送信します。
+リポジトリの Actions Secret `GA_MEASUREMENT_ID` を設定してください。Web ビルド時に Vite へ渡し、値自体はこのリポジトリに置きません。Secret が設定されると、ZIP／STL／STEP／寸法JSONの完了ダウンロードには `model_download`、3MF の完了ダウンロードには `print_3mf_download` を送信します。レポートに値を出すには、GA4 で次のイベントスコープのカスタム指標を登録してください: `model_rows`、`model_columns`、`model_capacity`、`screw_length_mm`、`funnel_height_mm`、`funnel_outlet_mm`。`screw_size` と `download_format` は、必要に応じてカスタム ディメンションにできるイベントパラメータです。漏斗高さが未指定の場合は `0` と送信します。
 
 ## Webアプリの使い方
 

@@ -17,7 +17,7 @@ The generator runs in the browser with Replicad and OpenCascade WebAssembly. The
 
 ### Google Analytics download reporting
 
-The site is configured with measurement ID `G-WD1LY85BFN`. It sends `model_download` for ZIP/STL/STEP/dimensions downloads and `print_3mf_download` for a completed 3MF download. Register these event-scoped custom metrics in GA4 to include their values in reports: `model_rows`, `model_columns`, `model_capacity`, `screw_length_mm`, `funnel_height_mm`, and `funnel_outlet_mm`. `screw_size` and `download_format` are event parameters for optional custom dimensions. A blank funnel height is reported as `0`.
+Set the repository Actions secret `GA_MEASUREMENT_ID`; the web build passes it to Vite without placing the value in this repository. When the secret is present, the site sends `model_download` for ZIP/STL/STEP/dimensions downloads and `print_3mf_download` for a completed 3MF download. Register these event-scoped custom metrics in GA4 to include their values in reports: `model_rows`, `model_columns`, `model_capacity`, `screw_length_mm`, `funnel_height_mm`, and `funnel_outlet_mm`. `screw_size` and `download_format` are event parameters for optional custom dimensions. A blank funnel height is reported as `0`.
 
 ## Use the web app
 
