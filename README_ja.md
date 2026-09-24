@@ -13,7 +13,11 @@
 - CADファイル、寸法、検証結果をまとめたZIP。
 - 5部品を選択した印刷プレートへ配置したBambu Studio用3MF。
 
-生成器はブラウザ内でReplicadとOpenCascade WebAssemblyを使って動作します。CADエンジンと生成したモデルは端末内に留まり、サーバーへ送信されません。
+生成器はブラウザ内でReplicadとOpenCascade WebAssemblyを使って動作します。CADエンジンと生成したモデルは端末内に留まり、CADファイル自体を送信しません。一方、Google Analytics には完了したモデル／3MFダウンロードと個人を特定しない設計パラメータを記録します。
+
+### Google Analytics のダウンロード計測
+
+測定 ID は `G-WD1LY85BFN` です。ZIP／STL／STEP／寸法JSONの完了ダウンロードには `model_download`、3MF の完了ダウンロードには `print_3mf_download` を送信します。レポートに値を出すには、GA4 で次のイベントスコープのカスタム指標を登録してください: `model_rows`、`model_columns`、`model_capacity`、`screw_length_mm`、`funnel_height_mm`、`funnel_outlet_mm`。`screw_size` と `download_format` は、必要に応じてカスタム ディメンションにできるイベントパラメータです。漏斗高さが未指定の場合は `0` と送信します。
 
 ## Webアプリの使い方
 
