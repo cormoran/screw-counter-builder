@@ -63,6 +63,27 @@ it.each([
     expect(outside - inside).toBeGreaterThan(0);
     expect(outside - inside).toBeLessThan(0.2);
   }
+  // The actual root opening is wider, while the bag-insertion lip retains
+  // its configured width. Sample walls above the sloped floor on both sides.
+  const openingWidth = (x: number) => {
+    const floor = sampleFloor(x, d.width / 2);
+    return [-1, 1].reduce((width, side) => {
+      const hits = new Raycaster(new Vector3(x, d.width / 2, floor + 1), new Vector3(0, side, 0)).intersectObject(solid);
+      expect(hits.length).toBeGreaterThan(0);
+      return width + Math.abs(hits[0].point.y - d.width / 2);
+    }, 0);
+  };
+  expect(openingWidth(-15.9)).toBeCloseTo(10, 1);
+  expect(openingWidth(0.5)).toBeCloseTo(d.funnelThroatWidth, 2);
+  expect(openingWidth(0.5)).toBeGreaterThan(openingWidth(-15.9) + 3);
+  const outerWidth = (x: number) => {
+    const floor = sampleFloor(x, d.width / 2);
+    const hits = new Raycaster(new Vector3(x, d.width + 1, floor + 1), new Vector3(0, -1, 0)).intersectObject(solid);
+    expect(hits.length).toBeGreaterThan(0);
+    return 2 * (hits[0].point.y - d.width / 2);
+  };
+  expect(outerWidth(-14)).toBeLessThan(outerWidth(-8) - 0.1);
+  expect(outerWidth(-8)).toBeLessThan(outerWidth(-2) - 0.1);
   geometry.dispose();
   material.dispose();
   expect(model.files["funnel.stl"].size).toBeGreaterThan(84);
