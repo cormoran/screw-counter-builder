@@ -277,7 +277,14 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     const z = d.funnelMountZ;
     const bottom = -d.funnelDepth;
     const outlet = settings.funnelOutlet;
-    const section = (w: number, h: number, height: number, x: number) => sketchRoundedRectangle(w, h, 2, { plane: "XY", origin: [x, d.width / 2, height] });
+    // Every transverse section falls directly into the longitudinal groove.
+    // The former offset-square loft pointed the front banks away from the exit.
+    const troughSection = (x: number) => new Sketcher("YZ", [x, 0, 0])
+      .movePointerTo([2.4, d.funnelSlopeZ])
+      .lineTo([(d.width - d.funnelThroatWidth) / 2, funnelFloorZ(d, x)])
+      .lineTo([(d.width + d.funnelThroatWidth) / 2, funnelFloorZ(d, x)])
+      .lineTo([d.width - 2.4, d.funnelSlopeZ])
+      .lineTo([d.width - 2.4, 0.2]).lineTo([2.4, 0.2]).close();
     // Closed-bottom chamber with a side spout opposite the +X slider tab.
     const envelope = rounded(0, 0, bottom, d.length, d.width, d.funnelDepth, 4)
       .fillet(0.6, (finder) => finder.parallelTo("XY"));
@@ -288,8 +295,8 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
       .fillet(0.8, (finder) => finder.inDirection("Z"))
       .cut(aboveFunnelFloor(d, d.funnelOutletHeight / 2));
     funnel = envelope.clone().fuse(spout)
-      .cut(section(outlet, outlet, bottom + 2.4, d.funnelOutletX)
-        .loftWith(section(d.length - 4.8, d.width - 4.8, d.funnelSlopeZ, d.length / 2), {}).intersect(ramp.clone()))
+      .cut(troughSection(2.4).loftWith(troughSection(d.length - 2.4), {})
+        .intersect(rounded(2.4, 2.4, bottom, d.length - 4.8, d.width - 4.8, d.funnelDepth + 0.2, 2)))
       .cut(rounded(2.4, 2.4, d.funnelSlopeZ - 0.01, d.length - 4.8, d.width - 4.8, -d.funnelSlopeZ + 0.2, 2))
       // The open channel joins the chamber without a low spot or a roof at the mouth.
       .cut(box(-d.funnelSpoutLength - 0.1, (d.width - d.funnelThroatWidth) / 2, bottom,
@@ -400,7 +407,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     ? "No rigid assembly interference outside the split-peg compression regions"
     : "No pairwise assembly interference at the closed position");
   const outletProbe = box(-d.funnelSpoutLength - 0.1, (d.width - d.funnelThroatWidth) / 2 + 0.1,
-    -d.funnelDepth, d.funnelOutletX + d.funnelSpoutLength + 0.1, d.funnelThroatWidth - 0.2, d.funnelDepth + 0.1)
+    -d.funnelDepth, d.length - 2.4 + d.funnelSpoutLength + 0.1, d.funnelThroatWidth - 0.2, d.funnelDepth + 0.1)
     .intersect(aboveFunnelFloor(d, 0.1));
   if (intersectionVolume(funnel, outletProbe) >= 1e-5) throw new Error("Funnel outlet must remain open");
   const floorProbe = box(d.funnelOutletX - 1, d.width / 2 - 1, -d.funnelDepth + 0.8, 2, 2, 1);
@@ -421,7 +428,9 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   completed.push("Open upper half and pouring floor of the funnel spout verified");
   completed.push("Continuous descending funnel floor to the side spout verified");
   for (const x of d.screwXs) for (const y of d.screwYs) {
-    const flowPath = sketchCircle(d.head / 2, { plane: "XY", origin: [d.funnelOutletX, d.width / 2, funnelFloorZ(d, d.funnelOutletX + d.head / 2) + 0.1] })
+    // Follow the new route: across the bank into the groove at this drop
+    // station, then along the full-length groove checked by outletProbe.
+    const flowPath = sketchCircle(d.head / 2, { plane: "XY", origin: [x, d.width / 2, funnelFloorZ(d, x + d.head / 2) + 0.1] })
       .loftWith(sketchCircle(d.head / 2, { plane: "XY", origin: [x, y, d.funnelSlopeZ] }), {});
     if (intersectionVolume(funnel, flowPath) >= 1e-5) throw new Error("Funnel corner lands block a screw flow path");
     if (intersectionVolume(funnel, cylinder(x, y, d.funnelSlopeZ, d.head / 2, -d.funnelSlopeZ + 0.1)) >= 1e-5) throw new Error("Funnel mouth blocks a base outlet");

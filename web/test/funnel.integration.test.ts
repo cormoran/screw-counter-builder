@@ -41,6 +41,28 @@ it.each([
     expect(hits[0].point.z).toBeLessThan(d.funnelSlopeZ);
     previousFloor = hits[0].point.z;
   }
+  // On both banks just behind the front mounting lands, moving toward the
+  // outlet groove must always descend and meet it without a vertical step.
+  const bankX = d.funnelMounts[0].x + d.magnetPocketDiameter / 2 + 2;
+  const sampleFloor = (x: number, y: number) => {
+    const hits = new Raycaster(new Vector3(x, y, 1), new Vector3(0, 0, -1)).intersectObject(solid);
+    expect(hits.length).toBeGreaterThanOrEqual(2);
+    return hits[0].point.z;
+  };
+  const grooveEdge = d.funnelThroatWidth / 2;
+  const bankRun = d.width / 2 - 2.4 - grooveEdge;
+  for (const side of [-1, 1]) {
+    let last = Infinity;
+    for (const fraction of [0.8, 0.5, 0.2, 0.01, 0]) {
+      const height = sampleFloor(bankX, d.width / 2 + side * (grooveEdge + bankRun * fraction));
+      expect(height).toBeLessThan(last - 0.001);
+      last = height;
+    }
+    const outside = sampleFloor(bankX, d.width / 2 + side * (grooveEdge + 0.01));
+    const inside = sampleFloor(bankX, d.width / 2 + side * (grooveEdge - 0.01));
+    expect(outside - inside).toBeGreaterThan(0);
+    expect(outside - inside).toBeLessThan(0.2);
+  }
   geometry.dispose();
   material.dispose();
   expect(model.files["funnel.stl"].size).toBeGreaterThan(84);
