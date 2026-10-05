@@ -18,6 +18,8 @@ it.each([
   expect(model.verification.completed).toContain("No pairwise assembly interference at the closed position");
   expect(model.verification.completed).toContain("Funnel underside screw access and 45-degree counterbore roofs verified");
   expect(model.verification.completed).toContain("Small side registration lands and sockets verified at both mating planes");
+  expect(model.diagnostics.funnel.bounds.min[0]).toBeCloseTo(-16);
+  expect(model.verification.completed).toContain("Side funnel outlet and closed floor verified");
   expect(model.files["funnel.stl"].size).toBeGreaterThan(84);
   expect(model.files["assembly.step"].size).toBeGreaterThan(0);
 }, 120_000);

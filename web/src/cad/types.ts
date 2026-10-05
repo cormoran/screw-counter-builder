@@ -97,6 +97,9 @@ export interface DerivedDimensions {
   funnelDepth: number;
   funnelSlopeZ: number;
   registration: Point2D[];
+  funnelSpoutLength: number;
+  funnelThroatWidth: number;
+  funnelOutletHeight: number;
   funnelOutletX: number;
   funnelMountZ: number;
   funnelBasePocketDepth: number;

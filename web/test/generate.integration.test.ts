@@ -19,7 +19,7 @@ describe("browser CAD integration", () => {
     expect(model.verification.completed).toContain("Rounded funnel corners, outer edges, and outlet verified");
     expect(model.diagnostics.funnel.bounds.min[2]).toBeCloseTo(-19);
     expect(model.diagnostics.funnel.bounds.max[2]).toBeCloseTo(attachment === "pegs" ? Math.max(0.8, model.dimensions.funnelPegHeight) : 0.8);
-    expect(model.diagnostics.funnel.bounds.min[0]).toBeCloseTo(0);
+    expect(model.diagnostics.funnel.bounds.min[0]).toBeCloseTo(-16);
     expect(model.diagnostics.funnel.bounds.max[0]).toBeCloseTo(model.dimensions.length);
     expect(model.verification.completed).toContain("Funnel mouth, continuous outlet, and attachment clearances verified");
     expect(model.files["funnel.stl"].size).toBeGreaterThan(84);
