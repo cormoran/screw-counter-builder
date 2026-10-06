@@ -125,6 +125,7 @@ export function validateSettings(input: SettingsInput = {}): string[] {
   const shaft = resolved.shaftDiameter;
   const head = resolved.headDiameter;
   if (settings.funnelOutlet < head + 1) errors.push("Funnel outlet needs at least head + 1 mm");
+  if ((settings.funnelHeight ?? settings.screwLength + 14) + 1e-8 < head + 5.8) errors.push("Funnel height needs at least head + 5.8 mm for the side outlet");
   const slot = resolved.slotWidth;
   if (!(shaft > 0 && shaft + 0.3 <= slot && slot <= head - 0.6)) errors.push("Need shaft + 0.3 <= slot <= head - 0.6; measure the actual screw");
   const window = head + RELEASE_WINDOW_DIAMETER_CLEARANCE;

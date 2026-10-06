@@ -43,6 +43,23 @@ describe("browser CAD dimensions", () => {
     expect(validateSettings({ screw: "M3", funnelOutlet: 5 })).toContain("Funnel outlet needs at least head + 1 mm");
   });
 
+  it("widens the spout root while leaving clearance around corner supports", () => {
+    expect(deriveDimensions().funnelThroatWidth).toBe(16);
+    for (const rows of [1, 4]) for (const funnelOutlet of [5, 10, 24]) {
+      const d = deriveDimensions({ rows, funnelOutlet });
+      const supportEdge = d.funnelMounts[0].y + d.magnetPocketDiameter / 2 + 1.2;
+      expect(d.funnelThroatWidth).toBeLessThanOrEqual(funnelOutlet + 6);
+      expect((d.width - d.funnelThroatWidth) / 2 - supportEdge).toBeGreaterThanOrEqual(0.19);
+    }
+  });
+
+  it("rejects a side outlet too low for the screw head", () => {
+    expect(validateSettings({ screwLength: 1, funnelHeight: 9, headDiameter: 6 })).toContain("Funnel height needs at least head + 5.8 mm for the side outlet");
+    const d = deriveDimensions({ screwLength: 1, funnelHeight: 11.8, headDiameter: 6 });
+    expect(d.funnelOutletHeight).toBeCloseTo(7);
+    expect(d.funnelSpoutLength).toBe(16);
+  });
+
   it("moves coaxial corner mounts outward while retaining pocket walls", () => {
     expect(deriveDimensions().joints[0]).toEqual({ x: 4.5, y: 4.5 });
     for (const magnetDiameter of [3, 5, 6, 8]) for (const magnetDiameterClearance of [0, 0.6]) {

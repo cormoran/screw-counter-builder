@@ -47,6 +47,25 @@ const prismYZ = (points: Array<[number, number]>, x: number, length: number): Sh
   return sketch.close().extrude(length);
 };
 
+const funnelFloorZ = (d: DerivedDimensions, x: number) => -d.funnelDepth + 2.4
+  + (x + d.funnelSpoutLength) * (d.funnelDepth + d.funnelSlopeZ - 2.4) / (d.length - 2.4 + d.funnelSpoutLength);
+const aboveFunnelFloor = (d: DerivedDimensions, offset = 0): Shape3D => {
+  const left = -d.funnelSpoutLength - 0.2;
+  const right = d.length + 0.2;
+  return gussetXZ([[left, funnelFloorZ(d, left) + offset], [right, funnelFloorZ(d, right) + offset],
+    [right, d.funnelDepth + 1], [left, d.funnelDepth + 1]], -1, d.width + 2);
+};
+const funnelPlanPrism = (d: DerivedDimensions, lipWidth: number, rootWidth: number, rootX: number, extension = 0): Shape3D => {
+  // Extend cutters along the same taper so the physical tip keeps its set width.
+  const extendedLipWidth = lipWidth + (lipWidth - rootWidth) * extension / (d.funnelSpoutLength + rootX);
+  const sketch = new Sketcher("XY", [0, d.width / 2, -d.funnelDepth])
+    .movePointerTo([-d.funnelSpoutLength - extension, -extendedLipWidth / 2])
+    .lineTo([rootX, -rootWidth / 2])
+    .lineTo([rootX, rootWidth / 2])
+    .lineTo([-d.funnelSpoutLength - extension, extendedLipWidth / 2]);
+  return sketch.close().extrude(d.funnelDepth + 0.2);
+};
+
 type CachedCadPart = { key: string; shape: Shape3D; mesh: TriangleMesh; meshTolerance: number; diagnostic: PartDiagnostic; stl?: Blob };
 const partCache: Partial<Record<"base" | "tray" | "slider" | "lid" | "funnel", CachedCadPart>> = {};
 
@@ -260,18 +279,35 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     const z = d.funnelMountZ;
     const bottom = -d.funnelDepth;
     const outlet = settings.funnelOutlet;
-    const section = (w: number, h: number, height: number, x: number) => sketchRoundedRectangle(w, h, 2, { plane: "XY", origin: [x, d.width / 2, height] });
-    // A low rectangular block with a sloped cavity and an outlet away from +X's tab.
+    // Every transverse section falls directly into the longitudinal groove.
+    // The former offset-square loft pointed the front banks away from the exit.
+    const troughSection = (x: number) => new Sketcher("YZ", [x, 0, 0])
+      .movePointerTo([2.4, d.funnelSlopeZ])
+      .lineTo([(d.width - d.funnelThroatWidth) / 2, funnelFloorZ(d, x)])
+      .lineTo([(d.width + d.funnelThroatWidth) / 2, funnelFloorZ(d, x)])
+      .lineTo([d.width - 2.4, d.funnelSlopeZ])
+      .lineTo([d.width - 2.4, 0.2]).lineTo([2.4, 0.2]).close();
+    // Closed-bottom chamber with a side spout opposite the +X slider tab.
     const envelope = rounded(0, 0, bottom, d.length, d.width, d.funnelDepth, 4)
       .fillet(0.6, (finder) => finder.parallelTo("XY"));
-    funnel = envelope.clone()
-      .cut(section(outlet, outlet, bottom, d.funnelOutletX).loftWith(section(d.length - 4.8, d.width - 4.8, d.funnelSlopeZ, d.length / 2), {}))
+    const ramp = aboveFunnelFloor(d);
+    // Keep a flat printable underside and a rising U-shaped rim. The inner floor
+    // falls continuously from the chamber to the 16 mm bag-spout tip.
+    // The root opens up by up to 6 mm while preserving 2.4 mm spout walls.
+    // The outer shoulder reaches x=3, so extend its taper beyond the x=0 mouth.
+    const shoulderWidth = Math.min(Math.max(outlet + 10.8,
+      outlet + 4.8 + (d.funnelThroatWidth - outlet) * (d.funnelSpoutLength + 3) / d.funnelSpoutLength), d.width - 1.2);
+    const spout = funnelPlanPrism(d, outlet + 4.8, shoulderWidth, 3)
+      .fillet(0.8, (finder) => finder.inDirection("Z"))
+      .cut(aboveFunnelFloor(d, d.funnelOutletHeight / 2));
+    funnel = envelope.clone().fuse(spout)
+      .cut(troughSection(2.4).loftWith(troughSection(d.length - 2.4), {})
+        .intersect(rounded(2.4, 2.4, bottom, d.length - 4.8, d.width - 4.8, d.funnelDepth + 0.2, 2)))
       .cut(rounded(2.4, 2.4, d.funnelSlopeZ - 0.01, d.length - 4.8, d.width - 4.8, -d.funnelSlopeZ + 0.2, 2))
-      .cut(rounded(d.funnelOutletX - outlet / 2, (d.width - outlet) / 2, bottom - 0.1, outlet, outlet, 0.2, 2))
-      .fillet(0.4, (finder) => finder.inPlane("XY", bottom).inBox(
-        [d.funnelOutletX - outlet / 2 - 1, (d.width - outlet) / 2 - 1, bottom - 0.01],
-        [d.funnelOutletX + outlet / 2 + 1, (d.width + outlet) / 2 + 1, bottom + 0.01]))
-      .fillet(0.4, (finder) => finder.inPlane("XY", 0).inBox([2.3, 2.3, -0.01], [d.length - 2.3, d.width - 2.3, 0.01]));
+      // The open channel joins the chamber without a low spot or a roof at the mouth.
+      .cut(box(0, (d.width - d.funnelThroatWidth) / 2, bottom,
+        d.funnelOutletX + 0.1, d.funnelThroatWidth, d.funnelDepth + 0.2).intersect(ramp.clone()))
+      .cut(funnelPlanPrism(d, outlet, d.funnelThroatWidth, 0, 0.1).intersect(ramp.clone()));
     for (const p of d.registration) funnel = funnel.fuse(cone(p.x, p.y, -0.1, 1.3, 0.4, 0.9));
     for (const p of d.funnelMounts) {
       if (settings.funnelAlignment === "screws") {
@@ -291,8 +327,8 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
         bottom, span, span, d.funnelDepth, 2)
         // Wide outlets can overlap the blocks: a vertical cut keeps the outlet
         // open without reintroducing an unsupported underside.
-        .cut(rounded(d.funnelOutletX - outlet / 2, (d.width - outlet) / 2, bottom - 0.1,
-          outlet, outlet, d.funnelDepth + 0.2, 2));
+        .cut(rounded(d.funnelOutletX - outlet / 2, (d.width - outlet) / 2, bottom + 2.4,
+          outlet, outlet, d.funnelDepth, 2));
       funnel = funnel.fuse(cornerLand.intersect(envelope.clone()))
         .cut(cylinder(p.x, p.y, z, d.magnetPocketDiameter / 2, -z + 0.1));
       funnel = settings.funnelAlignment === "magnets"
@@ -376,11 +412,36 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   completed.push(settings.funnelAlignment === "pegs"
     ? "No rigid assembly interference outside the split-peg compression regions"
     : "No pairwise assembly interference at the closed position");
-  const outletProbe = rounded(d.funnelOutletX - settings.funnelOutlet / 2 + 0.1, (d.width - settings.funnelOutlet) / 2 + 0.1,
-    -d.funnelDepth - 0.1, settings.funnelOutlet - 0.2, settings.funnelOutlet - 0.2, 0.2, 1.9);
+  const outletProbe = box(0, (d.width - d.funnelThroatWidth) / 2 + 0.1,
+    -d.funnelDepth, d.length - 2.4, d.funnelThroatWidth - 0.2, d.funnelDepth + 0.1)
+    .intersect(aboveFunnelFloor(d, 0.1));
   if (intersectionVolume(funnel, outletProbe) >= 1e-5) throw new Error("Funnel outlet must remain open");
+  const spoutClearWidth = Math.min(settings.funnelOutlet, d.funnelThroatWidth) - 0.2;
+  const spoutProbe = box(-d.funnelSpoutLength - 0.1, (d.width - spoutClearWidth) / 2,
+    -d.funnelDepth, d.funnelSpoutLength + 0.1, spoutClearWidth, d.funnelDepth + 0.1)
+    .intersect(aboveFunnelFloor(d, 0.1));
+  if (intersectionVolume(funnel, spoutProbe) >= 1e-5) throw new Error("Funnel spout must remain open through its taper");
+  const floorProbe = box(d.funnelOutletX - 1, d.width / 2 - 1, -d.funnelDepth + 0.8, 2, 2, 1);
+  if (intersectionVolume(funnel, floorProbe) < 3.99) throw new Error("Funnel floor must remain closed");
+  // Independent samples verify the open upper half and material directly below
+  // the ramp, from the projecting lip through the chamber's former low spot.
+  for (const x of [-d.funnelSpoutLength + 1, -8, -0.5, d.funnelOutletX]) {
+    const floorZ = funnelFloorZ(d, x);
+    const floorSample = box(x - 0.01, d.width / 2 - 0.1, floorZ - 0.15, 0.02, 0.2, 0.1);
+    if (intersectionVolume(funnel, floorSample) < 0.00039) throw new Error("Funnel ramp must continue to the spout tip");
+    if (x < 0) {
+      const openSample = box(x, (d.width - settings.funnelOutlet) / 2 - 2,
+        funnelFloorZ(d, x + 0.1) + d.funnelOutletHeight / 2 + 0.1, 0.1, settings.funnelOutlet + 4, 1);
+      if (intersectionVolume(funnel, openSample) >= 1e-5) throw new Error("Funnel spout upper half must remain open");
+    }
+  }
+  completed.push("Side funnel outlet and closed floor verified");
+  completed.push("Open upper half and pouring floor of the funnel spout verified");
+  completed.push("Continuous descending funnel floor to the side spout verified");
   for (const x of d.screwXs) for (const y of d.screwYs) {
-    const flowPath = sketchCircle(d.head / 2, { plane: "XY", origin: [d.funnelOutletX, d.width / 2, -d.funnelDepth] })
+    // Follow the new route: across the bank into the groove at this drop
+    // station, then along the full-length groove checked by outletProbe.
+    const flowPath = sketchCircle(d.head / 2, { plane: "XY", origin: [x, d.width / 2, funnelFloorZ(d, x + d.head / 2) + 0.1] })
       .loftWith(sketchCircle(d.head / 2, { plane: "XY", origin: [x, y, d.funnelSlopeZ] }), {});
     if (intersectionVolume(funnel, flowPath) >= 1e-5) throw new Error("Funnel corner lands block a screw flow path");
     if (intersectionVolume(funnel, cylinder(x, y, d.funnelSlopeZ, d.head / 2, -d.funnelSlopeZ + 0.1)) >= 1e-5) throw new Error("Funnel mouth blocks a base outlet");
@@ -399,7 +460,7 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
   }
   for (const part of [base, funnel]) {
     const [min, max] = part.boundingBox.bounds;
-    if (min[0] < -1e-5 || min[1] < -1e-5 || max[0] > d.length + 1e-5 || max[1] > d.width + 1e-5) throw new Error("Funnel attachment protrudes beyond the base footprint");
+    if (min[0] < (part === funnel ? -d.funnelSpoutLength : 0) - 1e-5 || min[1] < -1e-5 || max[0] > d.length + 1e-5 || max[1] > d.width + 1e-5) throw new Error("Funnel attachment protrudes beyond the base footprint");
   }
   if (Math.abs(base.boundingBox.bounds[0][2]) > 1e-5) throw new Error("Base underside must stay on Z=0 without mounting protrusions");
   if (settings.joint === "screws" && settings.funnelAlignment !== "screws") for (const p of d.joints) {
@@ -437,17 +498,9 @@ export async function buildWithReplicad(settings: Settings, d: DerivedDimensions
     if (intersectionVolume(funnel, cylinder(x, y, -d.funnelDepth / 2, 0.08, 0.2)) >= 1e-5) throw new Error("Funnel outer corners must be rounded");
   }
   for (const z of [-0.15, -d.funnelDepth + 0.05]) {
-    if (intersectionVolume(funnel, box(0.05, d.width / 2, z, 0.1, 0.1, 0.1)) >= 1e-5 ||
-        intersectionVolume(funnel, box(0.8, d.width / 2, z, 0.1, 0.1, 0.1)) < 0.0009) throw new Error("Funnel edge rounds must retain the adjacent wall");
+    if (intersectionVolume(funnel, box(d.length - 0.15, d.width / 2, z, 0.1, 0.1, 0.1)) >= 1e-5 ||
+        intersectionVolume(funnel, box(d.length - 0.9, d.width / 2, z, 0.1, 0.1, 0.1)) < 0.0009) throw new Error("Funnel edge rounds must retain the adjacent wall");
   }
-  // Sample the rounded cross-section above the outlet rim fillet: at the
-  // bottom face the rim round intentionally removes this corner material.
-  const sectionFraction = 1 / (d.funnelDepth + d.funnelSlopeZ);
-  const outletCorner = cylinder(
-    (d.funnelOutletX - settings.funnelOutlet / 2) * (1 - sectionFraction) + 2.4 * sectionFraction + 0.1,
-    (d.width - settings.funnelOutlet) / 2 * (1 - sectionFraction) + 2.4 * sectionFraction + 0.1,
-    -d.funnelDepth + 1, 0.03, 0.02);
-  if (intersectionVolume(funnel, outletCorner) < 0.00005) throw new Error("Funnel outlet must retain rounded corners");
   completed.push("Rounded funnel corners, outer edges, and outlet verified");
   // The pitch-repeating geometry lets us sample the two boundaries and the
   // first interior station. This is a fast check, not a full per-station proof.
